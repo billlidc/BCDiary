@@ -520,7 +520,7 @@ export function DiaryApp() {
                 Memory
                 <textarea
                   ref={addMemoryTextareaRef}
-                  className="input mt-1 resize-none overflow-hidden"
+                  className="input diary-content-text mt-1 resize-none overflow-hidden"
                   rows={1}
                   value={content}
                   onChange={(event) => setContent(event.target.value)}
@@ -605,7 +605,7 @@ export function DiaryApp() {
                         Memory
                         <textarea
                           ref={editMemoryTextareaRef}
-                          className="input mt-1 resize-none overflow-hidden"
+                          className="input diary-content-text mt-1 resize-none overflow-hidden"
                           rows={1}
                           value={editContent}
                           onChange={(event) =>
@@ -670,7 +670,7 @@ export function DiaryApp() {
                       <h3 className="text-xl font-medium text-zinc-800 mt-1">
                         {entry.title}
                       </h3>
-                      <p className="text-zinc-600 mt-3 whitespace-pre-wrap">
+                      <p className="diary-content-text text-zinc-600 mt-3 whitespace-pre-wrap">
                         {entry.content}
                       </p>
                       {hasBeenEdited(entry) ? (

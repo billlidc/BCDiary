@@ -10,6 +10,24 @@
   --pixel-border: #31244f;
   --pixel-accent: #ff6eb6;
   --pixel-accent-dark: #a1418f;
+  --ui-font:
+    "Press Start 2P",
+    "PingFang SC",
+    "Hiragino Sans GB",
+    "Microsoft YaHei",
+    "Noto Sans CJK SC",
+    "Noto Sans SC",
+    "Segoe UI",
+    monospace;
+  --content-font:
+    "Inter",
+    "PingFang SC",
+    "Hiragino Sans GB",
+    "Microsoft YaHei",
+    "Noto Sans CJK SC",
+    "Noto Sans SC",
+    "Segoe UI",
+    sans-serif;
 }
 
 * {
@@ -21,14 +39,7 @@ body {
   margin: 0;
   padding: 0;
   color: var(--pixel-ink);
-  image-rendering: pixelated;
-  font-family:
-    "Press Start 2P",
-    "Courier New",
-    ui-monospace,
-    SFMono-Regular,
-    Menlo,
-    monospace;
+  font-family: var(--ui-font);
   font-size: 12px;
   line-height: 1.75;
   background-color: var(--pixel-bg-2);
@@ -142,4 +153,15 @@ body {
   height: 100%;
   object-fit: cover;
   display: block;
+}
+
+.diary-content-text {
+  font-family: var(--content-font) !important;
+  font-size: 18px;
+  line-height: 1.8;
+  letter-spacing: normal;
+}
+
+.diary-content-text::placeholder {
+  font-family: var(--content-font) !important;
 }
