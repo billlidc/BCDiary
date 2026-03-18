@@ -56,6 +56,7 @@ export function DiaryApp() {
   const [editTitle, setEditTitle] = useState("");
   const [editContent, setEditContent] = useState("");
   const [editMemoryDate, setEditMemoryDate] = useState("");
+  const [jumpDate, setJumpDate] = useState("");
   const addMemoryTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const editMemoryTextareaRef = useRef<HTMLTextAreaElement | null>(null);
 
@@ -211,6 +212,29 @@ export function DiaryApp() {
     () => displayNameFromEmail(userEmail),
     [userEmail],
   );
+  const firstEntryIdByDate = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const entry of entries) {
+      if (!map[entry.memory_date]) {
+        map[entry.memory_date] = entry.id;
+      }
+    }
+    return map;
+  }, [entries]);
+
+  const timelineDates = useMemo(
+    () => Object.keys(firstEntryIdByDate).sort((a, b) => b.localeCompare(a)),
+    [firstEntryIdByDate],
+  );
+
+  function jumpToDate(dateValue: string) {
+    const targetId = firstEntryIdByDate[dateValue];
+    if (!targetId) return;
+    const target = document.getElementById(`entry-${targetId}`);
+    if (!target) return;
+    target.scrollIntoView({ behavior: "smooth", block: "start" });
+    window.history.replaceState(null, "", `#entry-${targetId}`);
+  }
 
   if (!session) {
     return (
@@ -260,6 +284,50 @@ export function DiaryApp() {
             </button>
           </div>
         </header>
+
+        {entries.length > 0 ? (
+          <section className="card p-5 mt-5">
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div>
+                <p className="text-sm text-rose-500">Memory calendar jump</p>
+                <p className="text-[10px] text-zinc-500">
+                  Pick a date to jump to that day in the timeline.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="date"
+                  className="input"
+                  value={jumpDate}
+                  onChange={(event) => setJumpDate(event.target.value)}
+                />
+                <button
+                  className="btn btn-soft"
+                  onClick={() => jumpDate && jumpToDate(jumpDate)}
+                  disabled={!jumpDate || !firstEntryIdByDate[jumpDate]}
+                  type="button"
+                >
+                  Jump
+                </button>
+              </div>
+            </div>
+            <div className="mt-4 flex flex-wrap gap-2">
+              {timelineDates.slice(0, 14).map((dateValue) => {
+                const entryId = firstEntryIdByDate[dateValue];
+                return (
+                  <a
+                    key={dateValue}
+                    href={`#entry-${entryId}`}
+                    className="btn btn-soft"
+                    onClick={() => setJumpDate(dateValue)}
+                  >
+                    {formatPrettyDate(dateValue)}
+                  </a>
+                );
+              })}
+            </div>
+          </section>
+        ) : null}
 
         {showAddMemory ? (
           <section className="card p-5 md:p-6 mt-5">
@@ -344,7 +412,7 @@ export function DiaryApp() {
           ) : (
             <ul className="space-y-4">
               {entries.map((entry) => (
-                <li key={entry.id} className="card p-5">
+                <li key={entry.id} id={`entry-${entry.id}`} className="card p-5">
                   {editingEntryId === entry.id ? (
                     <form
                       className="space-y-4"
