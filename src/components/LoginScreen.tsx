@@ -16,7 +16,7 @@ export function LoginScreen({ onSuccess }: LoginScreenProps) {
   const [loading, setLoading] = useState(false);
 
   const title = useMemo(
-    () => (mode === "signin" ? "Welcome back" : "Create your diary account"),
+    () => (mode === "signin" ? "Welcome back" : "Create account"),
     [mode],
   );
 
@@ -65,7 +65,7 @@ export function LoginScreen({ onSuccess }: LoginScreenProps) {
       <p className="text-sm text-rose-500 mb-2">Our private timeline</p>
       <h1 className="text-2xl font-semibold text-zinc-800">{title}</h1>
       <p className="text-sm text-zinc-500 mt-2">
-        A cozy little space for memories, moments, and tiny love notes.
+        A cozy little space for just you and me.
       </p>
 
       <form onSubmit={handleSubmit} className="mt-6 space-y-4">
@@ -77,7 +77,7 @@ export function LoginScreen({ onSuccess }: LoginScreenProps) {
             className="input mt-1"
             value={email}
             onChange={(event) => setEmail(event.target.value)}
-            placeholder="billlidc0427@gmail.com"
+            placeholder="jsmith@example.com"
           />
         </label>
 

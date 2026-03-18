@@ -118,7 +118,7 @@ export function DiaryApp() {
 
   if (!session) {
     return (
-      <main className="min-h-screen bg-gradient-to-b from-rose-50 to-violet-50 flex items-center justify-center p-6">
+      <main className="pixel-bg min-h-screen flex items-center justify-center p-6">
         <LoginScreen onSuccess={loadEntries} />
       </main>
     );
@@ -126,7 +126,7 @@ export function DiaryApp() {
 
   if (blockedUser) {
     return (
-      <main className="min-h-screen bg-gradient-to-b from-rose-50 to-violet-50 flex items-center justify-center p-6">
+      <main className="pixel-bg min-h-screen flex items-center justify-center p-6">
         <div className="card max-w-md w-full p-8 text-center">
           <h1 className="text-xl font-semibold text-zinc-800">Access restricted</h1>
           <p className="mt-2 text-zinc-600 text-sm">
@@ -141,7 +141,7 @@ export function DiaryApp() {
   }
 
   return (
-    <main className="min-h-screen bg-gradient-to-b from-rose-50 to-violet-50 p-5 md:p-10">
+    <main className="pixel-bg min-h-screen p-5 md:p-10">
       <section className="max-w-3xl mx-auto">
         <header className="card p-5 md:p-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>

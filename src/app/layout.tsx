@@ -1,5 +1,12 @@
 import type { Metadata } from "next";
+import { Press_Start_2P } from "next/font/google";
 import "./globals.css";
+
+const pressStart = Press_Start_2P({
+  subsets: ["latin"],
+  weight: "400",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: "Our Cozy Diary",
@@ -13,7 +20,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body className={pressStart.className}>{children}</body>
     </html>
   );
 }
