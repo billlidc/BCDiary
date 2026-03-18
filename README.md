@@ -52,6 +52,16 @@ If your table already exists from an earlier setup, run this once:
 
 This adds `updated_at` and automatically refreshes it whenever an entry is edited.
 
+## 3.2) Enable custom profile names + avatars
+
+Run this once:
+
+1. Open Supabase SQL Editor.
+2. Open `supabase/profiles.sql`.
+3. Run the SQL.
+
+This creates a `profiles` table so each account can set a nickname and avatar URL.
+
 ## 4) Set up Auth for just the two of you
 
 In Supabase dashboard:
@@ -82,3 +92,4 @@ If you are generating UI pieces in v0:
 - `src/lib/auth.ts`: allowed email logic
 - `supabase/entries.sql`: table and RLS policies
 - `supabase/entries_add_updated_at.sql`: one-time edited timestamp migration
+- `supabase/profiles.sql`: nickname/avatar profile table + RLS

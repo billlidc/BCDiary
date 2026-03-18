@@ -1,14 +1,29 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { displayNameFromEmail, isAllowedEmail } from "@/lib/auth";
 import { supabase } from "@/lib/supabaseClient";
-import type { Entry } from "@/lib/types";
+import type { Entry, Profile } from "@/lib/types";
 import { LoginScreen } from "./LoginScreen";
 
+function toLocalDateInputValue(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function parseDateOnlyAsLocal(value: string): Date {
+  const [year, month, day] = value.split("-").map(Number);
+  return new Date(year, (month || 1) - 1, day || 1, 12, 0, 0, 0);
+}
+
 function formatPrettyDate(value: string): string {
-  return new Date(value).toLocaleDateString(undefined, {
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(value)
+    ? parseDateOnlyAsLocal(value)
+    : new Date(value);
+  return date.toLocaleDateString(undefined, {
     month: "short",
     day: "numeric",
     year: "numeric",
@@ -39,15 +54,28 @@ function autoResizeTextarea(textarea: HTMLTextAreaElement): void {
   textarea.style.height = `${textarea.scrollHeight}px`;
 }
 
+function initialsFromName(name: string): string {
+  const words = name
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2);
+  if (words.length === 0) return "?";
+  return words.map((word) => word[0]?.toUpperCase() ?? "").join("");
+}
+
 export function DiaryApp() {
   const [session, setSession] = useState<Session | null>(null);
   const [entries, setEntries] = useState<Entry[]>([]);
+  const [profilesById, setProfilesById] = useState<Record<string, Profile>>({});
+  const [showProfileEditor, setShowProfileEditor] = useState(false);
+  const [nicknameInput, setNicknameInput] = useState("");
+  const [avatarUrlInput, setAvatarUrlInput] = useState("");
+  const [savingProfile, setSavingProfile] = useState(false);
   const [showAddMemory, setShowAddMemory] = useState(false);
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
-  const [memoryDate, setMemoryDate] = useState(
-    new Date().toISOString().slice(0, 10),
-  );
+  const [memoryDate, setMemoryDate] = useState(toLocalDateInputValue(new Date()));
   const [loadingEntries, setLoadingEntries] = useState(true);
   const [savingEntry, setSavingEntry] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
@@ -61,9 +89,22 @@ export function DiaryApp() {
   const editMemoryTextareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   const userEmail = session?.user?.email ?? null;
+  const userId = session?.user?.id ?? null;
   const blockedUser = session && !isAllowedEmail(userEmail);
 
-  async function loadEntries() {
+  const currentProfile = userId ? profilesById[userId] : undefined;
+  const welcomeName = currentProfile?.nickname || displayNameFromEmail(userEmail);
+  const welcomeAvatar = currentProfile?.avatar_url || null;
+
+  function getEntryDisplayName(entry: Entry): string {
+    return profilesById[entry.author_id]?.nickname || entry.author_name;
+  }
+
+  function getEntryAvatarUrl(entry: Entry): string | null {
+    return profilesById[entry.author_id]?.avatar_url || null;
+  }
+
+  const loadEntries = useCallback(async () => {
     setLoadingEntries(true);
     setError(null);
     const { data, error: fetchError } = await supabase
@@ -80,7 +121,29 @@ export function DiaryApp() {
 
     setEntries((data as Entry[]) ?? []);
     setLoadingEntries(false);
-  }
+  }, []);
+
+  const loadProfiles = useCallback(async (targetUserId?: string | null) => {
+    const { data, error: profilesError } = await supabase
+      .from("profiles")
+      .select("*");
+    if (profilesError) {
+      setError(profilesError.message);
+      return;
+    }
+
+    const nextMap: Record<string, Profile> = {};
+    for (const profile of (data as Profile[]) ?? []) {
+      nextMap[profile.user_id] = profile;
+    }
+    setProfilesById(nextMap);
+
+    const profileUserId = targetUserId ?? userId;
+    if (profileUserId && nextMap[profileUserId]) {
+      setNicknameInput(nextMap[profileUserId].nickname ?? "");
+      setAvatarUrlInput(nextMap[profileUserId].avatar_url ?? "");
+    }
+  }, [userId]);
 
   async function addMemory(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -96,14 +159,14 @@ export function DiaryApp() {
         content: content.trim(),
         memory_date: memoryDate,
         author_id: session.user.id,
-        author_name: displayNameFromEmail(userEmail),
+        author_name: currentProfile?.nickname || displayNameFromEmail(userEmail),
       });
 
       if (insertError) throw insertError;
 
       setTitle("");
       setContent("");
-      setMemoryDate(new Date().toISOString().slice(0, 10));
+      setMemoryDate(toLocalDateInputValue(new Date()));
       setShowAddMemory(false);
       await loadEntries();
     } catch (err) {
@@ -119,7 +182,48 @@ export function DiaryApp() {
     await supabase.auth.signOut();
     setSession(null);
     setEntries([]);
+    setProfilesById({});
+    setShowProfileEditor(false);
+    setNicknameInput("");
+    setAvatarUrlInput("");
     setShowAddMemory(false);
+  }
+
+  async function saveProfile(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!session?.user?.id) return;
+
+    const nickname = nicknameInput.trim();
+    if (!nickname) {
+      setError("Nickname cannot be empty.");
+      return;
+    }
+
+    try {
+      setSavingProfile(true);
+      setError(null);
+
+      const { error: upsertError } = await supabase.from("profiles").upsert(
+        {
+          user_id: session.user.id,
+          nickname,
+          avatar_url: avatarUrlInput.trim() || null,
+        },
+        { onConflict: "user_id" },
+      );
+
+      if (upsertError) throw upsertError;
+
+      await loadProfiles();
+      await loadEntries();
+      setShowProfileEditor(false);
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Unable to save profile.";
+      setError(message);
+    } finally {
+      setSavingProfile(false);
+    }
   }
 
   function startEdit(entry: Entry) {
@@ -175,6 +279,9 @@ export function DiaryApp() {
       setSession(nextSession);
 
       if (nextSession && isAllowedEmail(nextSession.user.email)) {
+        setNicknameInput(displayNameFromEmail(nextSession.user.email));
+        setAvatarUrlInput("");
+        loadProfiles(nextSession.user.id);
         loadEntries();
       } else {
         setLoadingEntries(false);
@@ -187,14 +294,18 @@ export function DiaryApp() {
       setSession(nextSession);
 
       if (nextSession && isAllowedEmail(nextSession.user.email)) {
+        setNicknameInput(displayNameFromEmail(nextSession.user.email));
+        setAvatarUrlInput("");
+        loadProfiles(nextSession.user.id);
         loadEntries();
       } else {
         setEntries([]);
+        setProfilesById({});
       }
     });
 
     return () => subscription.unsubscribe();
-  }, []);
+  }, [loadEntries, loadProfiles]);
 
   useEffect(() => {
     if (addMemoryTextareaRef.current) {
@@ -208,10 +319,6 @@ export function DiaryApp() {
     }
   }, [editContent, editingEntryId]);
 
-  const welcomeName = useMemo(
-    () => displayNameFromEmail(userEmail),
-    [userEmail],
-  );
   const firstEntryIdByDate = useMemo(() => {
     const map: Record<string, string> = {};
     for (const entry of entries) {
@@ -266,24 +373,88 @@ export function DiaryApp() {
     <main className="pixel-bg min-h-screen p-5 md:p-10">
       <section className="max-w-3xl mx-auto">
         <header className="card p-5 md:p-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div>
+          <div className="flex items-center gap-3">
+            <div className="avatar-box">
+              {welcomeAvatar ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={welcomeAvatar}
+                  alt={`${welcomeName} avatar`}
+                />
+              ) : (
+                <span>{initialsFromName(welcomeName)}</span>
+              )}
+            </div>
+            <div>
             <p className="text-sm text-rose-500">Shared diary</p>
             <h1 className="text-2xl md:text-3xl font-semibold text-zinc-800">
               Hi {welcomeName}, keep this memory cozy.
             </h1>
+            </div>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <button
               className="btn btn-primary"
               onClick={() => setShowAddMemory(true)}
             >
               + Add memory
             </button>
+            <button
+              className="btn btn-soft"
+              onClick={() => setShowProfileEditor((current) => !current)}
+            >
+              {showProfileEditor ? "Close profile" : "Edit profile"}
+            </button>
             <button className="btn btn-soft" onClick={signOut}>
               Sign out
             </button>
           </div>
         </header>
+
+        {showProfileEditor ? (
+          <section className="card p-5 md:p-6 mt-5">
+            <h2 className="text-lg font-medium text-zinc-800">
+              Profile settings
+            </h2>
+            <form className="mt-4 space-y-4" onSubmit={saveProfile}>
+              <label className="block text-sm text-zinc-700">
+                Nickname
+                <input
+                  className="input mt-1"
+                  value={nicknameInput}
+                  onChange={(event) => setNicknameInput(event.target.value)}
+                  placeholder="How your name appears in the diary"
+                  required
+                />
+              </label>
+              <label className="block text-sm text-zinc-700">
+                Avatar image URL (optional)
+                <input
+                  className="input mt-1"
+                  value={avatarUrlInput}
+                  onChange={(event) => setAvatarUrlInput(event.target.value)}
+                  placeholder="https://..."
+                />
+              </label>
+              <div className="flex gap-2">
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                  disabled={savingProfile}
+                >
+                  {savingProfile ? "Saving..." : "Save profile"}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-soft"
+                  onClick={() => setShowProfileEditor(false)}
+                >
+                  Close
+                </button>
+              </div>
+            </form>
+          </section>
+        ) : null}
 
         {entries.length > 0 ? (
           <section className="card p-5 mt-5">
@@ -419,7 +590,7 @@ export function DiaryApp() {
                       onSubmit={(event) => saveEdit(event, entry.id)}
                     >
                       <p className="text-xs uppercase tracking-wide text-rose-500">
-                        Editing memory by {entry.author_name}
+                        Editing memory by {getEntryDisplayName(entry)}
                       </p>
                       <label className="block text-sm text-zinc-700">
                         Title
@@ -477,10 +648,25 @@ export function DiaryApp() {
                     </form>
                   ) : (
                     <>
-                      <p className="text-xs uppercase tracking-wide text-rose-500">
-                        {formatPrettyDate(entry.memory_date)} by{" "}
-                        {entry.author_name}
-                      </p>
+                      <div className="flex items-center gap-3">
+                        <div className="avatar-box">
+                          {getEntryAvatarUrl(entry) ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={getEntryAvatarUrl(entry) ?? ""}
+                              alt={`${getEntryDisplayName(entry)} avatar`}
+                            />
+                          ) : (
+                            <span className="text-[10px]">
+                              {initialsFromName(getEntryDisplayName(entry))}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs uppercase tracking-wide text-rose-500">
+                          {formatPrettyDate(entry.memory_date)} by{" "}
+                          {getEntryDisplayName(entry)}
+                        </p>
+                      </div>
                       <h3 className="text-xl font-medium text-zinc-800 mt-1">
                         {entry.title}
                       </h3>
