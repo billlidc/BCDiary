@@ -354,7 +354,7 @@ export function DiaryApp() {
   if (blockedUser) {
     return (
       <main className="pixel-bg min-h-screen flex items-center justify-center p-6">
-        <div className="card max-w-md w-full p-8 text-center">
+        <div className="card max-w-lg w-full p-8 text-center">
           <h1 className="text-xl font-semibold text-zinc-800">
             Access restricted
           </h1>
@@ -371,10 +371,10 @@ export function DiaryApp() {
 
   return (
     <main className="pixel-bg min-h-screen p-5 md:p-10">
-      <section className="max-w-3xl mx-auto">
+      <section className="max-w-4xl mx-auto">
         <header className="card p-5 md:p-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div className="flex items-center gap-3">
-            <div className="avatar-box">
+            <div className="avatar-box avatar-box-large">
               {welcomeAvatar ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img

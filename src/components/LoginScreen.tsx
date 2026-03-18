@@ -61,7 +61,7 @@ export function LoginScreen({ onSuccess }: LoginScreenProps) {
   }
 
   return (
-    <div className="card max-w-md w-full p-6 md:p-8">
+    <div className="card max-w-lg w-full p-6 md:p-8">
       <p className="text-sm text-rose-500 mb-2">Our private timeline</p>
       <h1 className="text-2xl font-semibold text-zinc-800">{title}</h1>
       <p className="text-sm text-zinc-500 mt-2">
