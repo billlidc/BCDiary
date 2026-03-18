@@ -24,7 +24,7 @@ App runs at `http://localhost:3000`.
 ```env
 NEXT_PUBLIC_SUPABASE_URL=...
 NEXT_PUBLIC_SUPABASE_ANON_KEY=...
-NEXT_PUBLIC_ALLOWED_EMAILS=you@example.com,partner@example.com
+NEXT_PUBLIC_ALLOWED_EMAILS=billlidc0427@gmail.com,cathy326717@gmail.com
 ```
 
 ## 3) Create the `entries` table + policies
@@ -32,11 +32,12 @@ NEXT_PUBLIC_ALLOWED_EMAILS=you@example.com,partner@example.com
 1. Open Supabase SQL Editor.
 2. Open `supabase/entries.sql`.
 3. Replace:
-   - `you@example.com`
-   - `partner@example.com`
+   - `billlidc0427@gmail.com`
+   - `cathy326717@gmail.com`
 4. Run the SQL.
 
 This creates:
+
 - `entries` table
 - indexes
 - Row Level Security policies so only your two emails can access rows

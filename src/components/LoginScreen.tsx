@@ -25,7 +25,9 @@ export function LoginScreen({ onSuccess }: LoginScreenProps) {
     setError(null);
 
     if (!isAllowedEmail(email)) {
-      setError("This diary is private. Only the two invited emails can sign in.");
+      setError(
+        "This diary is private. Only the two invited emails can sign in.",
+      );
       return;
     }
 
@@ -49,7 +51,9 @@ export function LoginScreen({ onSuccess }: LoginScreenProps) {
       onSuccess();
     } catch (err) {
       const message =
-        err instanceof Error ? err.message : "Unable to authenticate right now.";
+        err instanceof Error
+          ? err.message
+          : "Unable to authenticate right now.";
       setError(message);
     } finally {
       setLoading(false);
@@ -73,7 +77,7 @@ export function LoginScreen({ onSuccess }: LoginScreenProps) {
             className="input mt-1"
             value={email}
             onChange={(event) => setEmail(event.target.value)}
-            placeholder="you@example.com"
+            placeholder="billlidc0427@gmail.com"
           />
         </label>
 
@@ -92,15 +96,25 @@ export function LoginScreen({ onSuccess }: LoginScreenProps) {
 
         {error ? <p className="text-sm text-rose-600">{error}</p> : null}
 
-        <button type="submit" className="btn btn-primary w-full" disabled={loading}>
-          {loading ? "Please wait..." : mode === "signin" ? "Sign in" : "Create account"}
+        <button
+          type="submit"
+          className="btn btn-primary w-full"
+          disabled={loading}
+        >
+          {loading
+            ? "Please wait..."
+            : mode === "signin"
+              ? "Sign in"
+              : "Create account"}
         </button>
       </form>
 
       <button
         type="button"
         className="text-sm text-zinc-500 hover:text-zinc-700 mt-5"
-        onClick={() => setMode((current) => (current === "signin" ? "signup" : "signin"))}
+        onClick={() =>
+          setMode((current) => (current === "signin" ? "signup" : "signin"))
+        }
       >
         {mode === "signin"
           ? "First time here? Create your account"

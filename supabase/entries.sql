@@ -25,7 +25,7 @@ to authenticated
 using (
   auth.jwt()->>'email' in (
     'billlidc0427@gmail.com',
-    'partner@example.com'
+    'cathy326717@gmail.com'
   )
 );
 
@@ -38,7 +38,7 @@ with check (
   auth.uid() = author_id
   and auth.jwt()->>'email' in (
     'billlidc0427@gmail.com',
-    'partner@example.com'
+    'cathy326717@gmail.com'
   )
 );
 
@@ -51,14 +51,14 @@ using (
   auth.uid() = author_id
   and auth.jwt()->>'email' in (
     'billlidc0427@gmail.com',
-    'partner@example.com'
+    'cathy326717@gmail.com'
   )
 )
 with check (
   auth.uid() = author_id
   and auth.jwt()->>'email' in (
     'billlidc0427@gmail.com',
-    'partner@example.com'
+    'cathy326717@gmail.com'
   )
 );
 
@@ -71,6 +71,6 @@ using (
   auth.uid() = author_id
   and auth.jwt()->>'email' in (
     'billlidc0427@gmail.com',
-    'partner@example.com'
+    'cathy326717@gmail.com'
   )
 );
