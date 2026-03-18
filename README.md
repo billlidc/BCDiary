@@ -24,7 +24,7 @@ App runs at `http://localhost:3000`.
 ```env
 NEXT_PUBLIC_SUPABASE_URL=...
 NEXT_PUBLIC_SUPABASE_ANON_KEY=...
-NEXT_PUBLIC_ALLOWED_EMAILS=billlidc0427@gmail.com,cathy326717@gmail.com
+NEXT_PUBLIC_ALLOWED_EMAILS=you@example.com,cathy326717@gmail.com
 ```
 
 ## 3) Create the `entries` table + policies
@@ -32,7 +32,7 @@ NEXT_PUBLIC_ALLOWED_EMAILS=billlidc0427@gmail.com,cathy326717@gmail.com
 1. Open Supabase SQL Editor.
 2. Open `supabase/entries.sql`.
 3. Replace:
-   - `billlidc0427@gmail.com`
+   - `you@example.com`
    - `cathy326717@gmail.com`
 4. Run the SQL.
 
@@ -41,6 +41,16 @@ This creates:
 - `entries` table
 - indexes
 - Row Level Security policies so only your two emails can access rows
+
+## 3.1) Enable edited timestamp (recommended)
+
+If your table already exists from an earlier setup, run this once:
+
+1. Open Supabase SQL Editor.
+2. Open `supabase/entries_add_updated_at.sql`.
+3. Run the SQL.
+
+This adds `updated_at` and automatically refreshes it whenever an entry is edited.
 
 ## 4) Set up Auth for just the two of you
 
@@ -71,3 +81,4 @@ If you are generating UI pieces in v0:
 - `src/lib/supabaseClient.ts`: Supabase client
 - `src/lib/auth.ts`: allowed email logic
 - `supabase/entries.sql`: table and RLS policies
+- `supabase/entries_add_updated_at.sql`: one-time edited timestamp migration

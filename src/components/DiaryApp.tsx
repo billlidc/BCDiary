@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { displayNameFromEmail, isAllowedEmail } from "@/lib/auth";
 import { supabase } from "@/lib/supabaseClient";
@@ -15,16 +15,49 @@ function formatPrettyDate(value: string): string {
   });
 }
 
+function hasBeenEdited(entry: Entry): boolean {
+  if (!entry.updated_at) return false;
+  return (
+    new Date(entry.updated_at).getTime() -
+      new Date(entry.created_at).getTime() >
+    1000
+  );
+}
+
+function formatDateTime(value: string): string {
+  return new Date(value).toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function autoResizeTextarea(textarea: HTMLTextAreaElement): void {
+  textarea.style.height = "auto";
+  textarea.style.height = `${textarea.scrollHeight}px`;
+}
+
 export function DiaryApp() {
   const [session, setSession] = useState<Session | null>(null);
   const [entries, setEntries] = useState<Entry[]>([]);
   const [showAddMemory, setShowAddMemory] = useState(false);
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
-  const [memoryDate, setMemoryDate] = useState(new Date().toISOString().slice(0, 10));
+  const [memoryDate, setMemoryDate] = useState(
+    new Date().toISOString().slice(0, 10),
+  );
   const [loadingEntries, setLoadingEntries] = useState(true);
   const [savingEntry, setSavingEntry] = useState(false);
+  const [savingEdit, setSavingEdit] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [editingEntryId, setEditingEntryId] = useState<string | null>(null);
+  const [editTitle, setEditTitle] = useState("");
+  const [editContent, setEditContent] = useState("");
+  const [editMemoryDate, setEditMemoryDate] = useState("");
+  const addMemoryTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const editMemoryTextareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   const userEmail = session?.user?.email ?? null;
   const blockedUser = session && !isAllowedEmail(userEmail);
@@ -73,7 +106,8 @@ export function DiaryApp() {
       setShowAddMemory(false);
       await loadEntries();
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Unable to save memory.";
+      const message =
+        err instanceof Error ? err.message : "Unable to save memory.";
       setError(message);
     } finally {
       setSavingEntry(false);
@@ -85,6 +119,53 @@ export function DiaryApp() {
     setSession(null);
     setEntries([]);
     setShowAddMemory(false);
+  }
+
+  function startEdit(entry: Entry) {
+    setEditingEntryId(entry.id);
+    setEditTitle(entry.title);
+    setEditContent(entry.content);
+    setEditMemoryDate(entry.memory_date);
+    setError(null);
+  }
+
+  function cancelEdit() {
+    setEditingEntryId(null);
+    setEditTitle("");
+    setEditContent("");
+    setEditMemoryDate("");
+  }
+
+  async function saveEdit(event: FormEvent<HTMLFormElement>, entryId: string) {
+    event.preventDefault();
+    if (!session?.user?.id) return;
+    if (!editTitle.trim() || !editContent.trim() || !editMemoryDate) return;
+
+    try {
+      setSavingEdit(true);
+      setError(null);
+
+      const { error: updateError } = await supabase
+        .from("entries")
+        .update({
+          title: editTitle.trim(),
+          content: editContent.trim(),
+          memory_date: editMemoryDate,
+        })
+        .eq("id", entryId)
+        .eq("author_id", session.user.id);
+
+      if (updateError) throw updateError;
+
+      cancelEdit();
+      await loadEntries();
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Unable to update memory.";
+      setError(message);
+    } finally {
+      setSavingEdit(false);
+    }
   }
 
   useEffect(() => {
@@ -114,7 +195,22 @@ export function DiaryApp() {
     return () => subscription.unsubscribe();
   }, []);
 
-  const welcomeName = useMemo(() => displayNameFromEmail(userEmail), [userEmail]);
+  useEffect(() => {
+    if (addMemoryTextareaRef.current) {
+      autoResizeTextarea(addMemoryTextareaRef.current);
+    }
+  }, [content, showAddMemory]);
+
+  useEffect(() => {
+    if (editMemoryTextareaRef.current) {
+      autoResizeTextarea(editMemoryTextareaRef.current);
+    }
+  }, [editContent, editingEntryId]);
+
+  const welcomeName = useMemo(
+    () => displayNameFromEmail(userEmail),
+    [userEmail],
+  );
 
   if (!session) {
     return (
@@ -128,7 +224,9 @@ export function DiaryApp() {
     return (
       <main className="pixel-bg min-h-screen flex items-center justify-center p-6">
         <div className="card max-w-md w-full p-8 text-center">
-          <h1 className="text-xl font-semibold text-zinc-800">Access restricted</h1>
+          <h1 className="text-xl font-semibold text-zinc-800">
+            Access restricted
+          </h1>
           <p className="mt-2 text-zinc-600 text-sm">
             This diary is private for the two invited accounts.
           </p>
@@ -151,7 +249,10 @@ export function DiaryApp() {
             </h1>
           </div>
           <div className="flex gap-2">
-            <button className="btn btn-primary" onClick={() => setShowAddMemory(true)}>
+            <button
+              className="btn btn-primary"
+              onClick={() => setShowAddMemory(true)}
+            >
               + Add memory
             </button>
             <button className="btn btn-soft" onClick={signOut}>
@@ -162,7 +263,9 @@ export function DiaryApp() {
 
         {showAddMemory ? (
           <section className="card p-5 md:p-6 mt-5">
-            <h2 className="text-lg font-medium text-zinc-800">Add a new memory</h2>
+            <h2 className="text-lg font-medium text-zinc-800">
+              Add a new memory
+            </h2>
             <form className="mt-4 space-y-4" onSubmit={addMemory}>
               <label className="block text-sm text-zinc-700">
                 Title
@@ -177,9 +280,12 @@ export function DiaryApp() {
               <label className="block text-sm text-zinc-700">
                 Memory
                 <textarea
-                  className="input mt-1 min-h-28"
+                  ref={addMemoryTextareaRef}
+                  className="input mt-1 resize-none overflow-hidden"
+                  rows={1}
                   value={content}
                   onChange={(event) => setContent(event.target.value)}
+                  onInput={(event) => autoResizeTextarea(event.currentTarget)}
                   placeholder="What happened today?"
                   required
                 />
@@ -195,7 +301,11 @@ export function DiaryApp() {
                 />
               </label>
               <div className="flex gap-2">
-                <button type="submit" className="btn btn-primary" disabled={savingEntry}>
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                  disabled={savingEntry}
+                >
                   {savingEntry ? "Saving..." : "Save memory"}
                 </button>
                 <button
@@ -213,7 +323,10 @@ export function DiaryApp() {
         <section className="mt-5 space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-medium text-zinc-800">Timeline</h2>
-            <button className="text-sm text-zinc-500 hover:text-zinc-700" onClick={loadEntries}>
+            <button
+              className="text-sm text-zinc-500 hover:text-zinc-700"
+              onClick={loadEntries}
+            >
               Refresh
             </button>
           </div>
@@ -224,18 +337,108 @@ export function DiaryApp() {
             <p className="text-zinc-500">Loading memories...</p>
           ) : entries.length === 0 ? (
             <div className="card p-6 text-sm text-zinc-600">
-              Your timeline is empty. Tap <span className="font-medium">Add memory</span> to
-              start your story.
+              Your timeline is empty. Tap{" "}
+              <span className="font-medium">Add memory</span> to start your
+              story.
             </div>
           ) : (
             <ul className="space-y-4">
               {entries.map((entry) => (
                 <li key={entry.id} className="card p-5">
-                  <p className="text-xs uppercase tracking-wide text-rose-500">
-                    {formatPrettyDate(entry.memory_date)} by {entry.author_name}
-                  </p>
-                  <h3 className="text-xl font-medium text-zinc-800 mt-1">{entry.title}</h3>
-                  <p className="text-zinc-600 mt-3 whitespace-pre-wrap">{entry.content}</p>
+                  {editingEntryId === entry.id ? (
+                    <form
+                      className="space-y-4"
+                      onSubmit={(event) => saveEdit(event, entry.id)}
+                    >
+                      <p className="text-xs uppercase tracking-wide text-rose-500">
+                        Editing memory by {entry.author_name}
+                      </p>
+                      <label className="block text-sm text-zinc-700">
+                        Title
+                        <input
+                          className="input mt-1"
+                          value={editTitle}
+                          onChange={(event) => setEditTitle(event.target.value)}
+                          required
+                        />
+                      </label>
+                      <label className="block text-sm text-zinc-700">
+                        Memory
+                        <textarea
+                          ref={editMemoryTextareaRef}
+                          className="input mt-1 resize-none overflow-hidden"
+                          rows={1}
+                          value={editContent}
+                          onChange={(event) =>
+                            setEditContent(event.target.value)
+                          }
+                          onInput={(event) =>
+                            autoResizeTextarea(event.currentTarget)
+                          }
+                          required
+                        />
+                      </label>
+                      <label className="block text-sm text-zinc-700">
+                        Date
+                        <input
+                          type="date"
+                          className="input mt-1"
+                          value={editMemoryDate}
+                          onChange={(event) =>
+                            setEditMemoryDate(event.target.value)
+                          }
+                          required
+                        />
+                      </label>
+                      <div className="flex gap-2">
+                        <button
+                          type="submit"
+                          className="btn btn-primary"
+                          disabled={savingEdit}
+                        >
+                          {savingEdit ? "Saving..." : "Save changes"}
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-soft"
+                          onClick={cancelEdit}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </form>
+                  ) : (
+                    <>
+                      <p className="text-xs uppercase tracking-wide text-rose-500">
+                        {formatPrettyDate(entry.memory_date)} by{" "}
+                        {entry.author_name}
+                      </p>
+                      <h3 className="text-xl font-medium text-zinc-800 mt-1">
+                        {entry.title}
+                      </h3>
+                      <p className="text-zinc-600 mt-3 whitespace-pre-wrap">
+                        {entry.content}
+                      </p>
+                      {hasBeenEdited(entry) ? (
+                        <p className="mt-3 text-[10px] text-zinc-500">
+                          Edited{" "}
+                          {entry.updated_at
+                            ? formatDateTime(entry.updated_at)
+                            : ""}
+                        </p>
+                      ) : null}
+                      {session?.user?.id === entry.author_id ? (
+                        <div className="mt-4">
+                          <button
+                            className="btn btn-soft"
+                            onClick={() => startEdit(entry)}
+                          >
+                            Edit memory
+                          </button>
+                        </div>
+                      ) : null}
+                    </>
+                  )}
                 </li>
               ))}
             </ul>

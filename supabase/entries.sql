@@ -9,11 +9,28 @@ create table if not exists public.entries (
   memory_date date not null default now()::date,
   author_id uuid not null references auth.users (id) on delete cascade,
   author_name text not null,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
 );
 
 create index if not exists entries_memory_date_idx on public.entries (memory_date desc);
 create index if not exists entries_created_at_idx on public.entries (created_at desc);
+
+create or replace function public.set_entries_updated_at()
+returns trigger
+language plpgsql
+as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_entries_set_updated_at on public.entries;
+create trigger trg_entries_set_updated_at
+before update on public.entries
+for each row
+execute function public.set_entries_updated_at();
 
 alter table public.entries enable row level security;
 
