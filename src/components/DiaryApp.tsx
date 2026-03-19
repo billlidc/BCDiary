@@ -365,11 +365,6 @@ export function DiaryApp() {
     return map;
   }, [filteredEntries]);
 
-  const timelineDates = useMemo(
-    () => Object.keys(firstEntryIdByDate).sort((a, b) => b.localeCompare(a)),
-    [firstEntryIdByDate],
-  );
-
   function jumpToDate(dateValue: string) {
     const targetId = firstEntryIdByDate[dateValue];
     if (!targetId) return;
@@ -517,21 +512,6 @@ export function DiaryApp() {
                   Jump
                 </button>
               </div>
-            </div>
-            <div className="mt-4 flex flex-wrap gap-2">
-              {timelineDates.slice(0, 14).map((dateValue) => {
-                const entryId = firstEntryIdByDate[dateValue];
-                return (
-                  <a
-                    key={dateValue}
-                    href={`#entry-${entryId}`}
-                    className="btn btn-soft"
-                    onClick={() => setJumpDate(dateValue)}
-                  >
-                    {formatPrettyDate(dateValue)}
-                  </a>
-                );
-              })}
             </div>
           </section>
         ) : null}
