@@ -465,9 +465,6 @@ export function DiaryApp() {
         lines.push(
           `Date: ${formatPrettyDate(entry.memory_date)} | Author: ${getEntryDisplayName(entry)}`,
         );
-        if (entry.mood_tags && entry.mood_tags.length > 0) {
-          lines.push(`Mood tags: ${entry.mood_tags.map((tag) => `#${tag}`).join(", ")}`);
-        }
         if (hasBeenEdited(entry) && entry.updated_at) {
           lines.push(`Edited: ${formatDateTime(entry.updated_at)}`);
         }
