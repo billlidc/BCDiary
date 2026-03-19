@@ -87,7 +87,7 @@ export function DiaryApp() {
   const [editMemoryDate, setEditMemoryDate] = useState("");
   const [jumpDate, setJumpDate] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
-  const [collapsedEntries, setCollapsedEntries] = useState<Set<string>>(new Set());
+  const [authorFilter, setAuthorFilter] = useState<"all" | "me" | string>("all");
   const addMemoryTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const editMemoryTextareaRef = useRef<HTMLTextAreaElement | null>(null);
 
@@ -326,16 +326,34 @@ export function DiaryApp() {
     }
   }, [editContent, editingEntryId]);
 
+  const authorOptions = useMemo(() => {
+    const byId = new Map<string, string>();
+    for (const entry of entries) {
+      if (!byId.has(entry.author_id)) {
+        byId.set(entry.author_id, getEntryDisplayName(entry));
+      }
+    }
+    return Array.from(byId.entries()).map(([id, name]) => ({ id, name }));
+  }, [entries, getEntryDisplayName]);
+
   const filteredEntries = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
-    if (!query) return entries;
-    return entries.filter(
-      (entry) =>
+    return entries.filter((entry) => {
+      const matchesAuthor =
+        authorFilter === "all"
+          ? true
+          : authorFilter === "me"
+            ? entry.author_id === userId
+            : entry.author_id === authorFilter;
+      if (!matchesAuthor) return false;
+      if (!query) return true;
+      return (
         entry.title.toLowerCase().includes(query) ||
         entry.content.toLowerCase().includes(query) ||
-        getEntryDisplayName(entry).toLowerCase().includes(query),
-    );
-  }, [entries, searchQuery, getEntryDisplayName]);
+        getEntryDisplayName(entry).toLowerCase().includes(query)
+      );
+    });
+  }, [entries, searchQuery, authorFilter, userId, getEntryDisplayName]);
 
   const firstEntryIdByDate = useMemo(() => {
     const map: Record<string, string> = {};
@@ -581,6 +599,21 @@ export function DiaryApp() {
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <h2 className="text-lg font-medium text-zinc-800">Timeline</h2>
             <div className="flex items-center gap-2">
+              <select
+                className="input"
+                value={authorFilter}
+                onChange={(event) => setAuthorFilter(event.target.value)}
+              >
+                <option value="all">All authors</option>
+                <option value="me">Me</option>
+                {authorOptions
+                  .filter((option) => option.id !== userId)
+                  .map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {option.name}
+                    </option>
+                  ))}
+              </select>
               <div className="relative flex-1 md:flex-none">
                 <input
                   className="input pr-8"
@@ -613,6 +646,15 @@ export function DiaryApp() {
               for &ldquo;{searchQuery.trim()}&rdquo;
             </p>
           )}
+          {authorFilter !== "all" && (
+            <p className="text-[10px] text-zinc-500">
+              Filtering by{" "}
+              {authorFilter === "me"
+                ? "you"
+                : authorOptions.find((option) => option.id === authorFilter)?.name ?? "selected author"}
+              .
+            </p>
+          )}
 
           {error ? <p className="text-sm text-rose-600">{error}</p> : null}
 
@@ -622,6 +664,8 @@ export function DiaryApp() {
             <div className="card p-6 text-sm text-zinc-600">
               {searchQuery.trim()
                 ? "No memories match your search."
+                : authorFilter !== "all"
+                  ? "No memories found for this author filter."
                 : "Your timeline is empty. Tap Add memory to start your story."}
             </div>
           ) : (
