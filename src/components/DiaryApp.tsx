@@ -65,6 +65,18 @@ function initialsFromName(name: string): string {
   return words.map((word) => word[0]?.toUpperCase() ?? "").join("");
 }
 
+function downloadTextFile(filename: string, content: string, mimeType: string): void {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
 export function DiaryApp() {
   const [session, setSession] = useState<Session | null>(null);
   const [entries, setEntries] = useState<Entry[]>([]);
@@ -88,6 +100,7 @@ export function DiaryApp() {
   const [jumpDate, setJumpDate] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [authorFilter, setAuthorFilter] = useState<"all" | "me" | string>("all");
+  const [exporting, setExporting] = useState<boolean>(false);
   const addMemoryTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const editMemoryTextareaRef = useRef<HTMLTextAreaElement | null>(null);
 
@@ -374,6 +387,57 @@ export function DiaryApp() {
     window.history.replaceState(null, "", `#entry-${targetId}`);
   }
 
+  function buildExportBaseFilename(): string {
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+    return `memory-export-${stamp}`;
+  }
+
+  function exportAsMarkdown() {
+    try {
+      setExporting(true);
+      const lines: string[] = [];
+      lines.push("# Shared Diary Export");
+      lines.push("");
+      lines.push(`Exported at: ${new Date().toLocaleString()}`);
+      lines.push(`Entries: ${filteredEntries.length}`);
+      lines.push("");
+      if (searchQuery.trim()) lines.push(`Search filter: ${searchQuery.trim()}`);
+      if (authorFilter !== "all") {
+        const authorName =
+          authorFilter === "me"
+            ? "Me"
+            : authorOptions.find((option) => option.id === authorFilter)?.name ??
+              "Selected author";
+        lines.push(`Author filter: ${authorName}`);
+      }
+      if (searchQuery.trim() || authorFilter !== "all") lines.push("");
+
+      for (const entry of filteredEntries) {
+        lines.push(`## ${entry.title}`);
+        lines.push(
+          `Date: ${formatPrettyDate(entry.memory_date)} | Author: ${getEntryDisplayName(entry)}`,
+        );
+        if (entry.mood_tags && entry.mood_tags.length > 0) {
+          lines.push(`Mood tags: ${entry.mood_tags.map((tag) => `#${tag}`).join(", ")}`);
+        }
+        if (hasBeenEdited(entry) && entry.updated_at) {
+          lines.push(`Edited: ${formatDateTime(entry.updated_at)}`);
+        }
+        lines.push("");
+        lines.push(entry.content);
+        lines.push("");
+      }
+
+      downloadTextFile(
+        `${buildExportBaseFilename()}.md`,
+        lines.join("\n"),
+        "text/markdown;charset=utf-8",
+      );
+    } finally {
+      setExporting(false);
+    }
+  }
+
   if (!session) {
     return (
       <main className="pixel-bg min-h-screen flex items-center justify-center p-6">
@@ -435,6 +499,14 @@ export function DiaryApp() {
               onClick={() => setShowProfileEditor((current) => !current)}
             >
               {showProfileEditor ? "Close profile" : "Edit profile"}
+            </button>
+            <button
+              type="button"
+              className="btn btn-soft"
+              onClick={exportAsMarkdown}
+              disabled={loadingEntries || filteredEntries.length === 0 || exporting}
+            >
+              {exporting ? "Exporting..." : "Export Markdown"}
             </button>
             <button className="btn btn-soft" onClick={signOut}>
               Sign out
