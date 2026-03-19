@@ -77,6 +77,13 @@ function downloadTextFile(filename: string, content: string, mimeType: string): 
   URL.revokeObjectURL(url);
 }
 
+function getSubmitAction(event: FormEvent<HTMLFormElement>): "publish" | "draft" {
+  const native = event.nativeEvent as Event & {
+    submitter?: HTMLButtonElement;
+  };
+  return native.submitter?.value === "draft" ? "draft" : "publish";
+}
+
 export function DiaryApp() {
   const [session, setSession] = useState<Session | null>(null);
   const [entries, setEntries] = useState<Entry[]>([]);
@@ -168,6 +175,7 @@ export function DiaryApp() {
   async function addMemory(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!session?.user?.id) return;
+    const action = getSubmitAction(event);
     if (!title.trim() || !content.trim()) return;
 
     try {
@@ -177,6 +185,7 @@ export function DiaryApp() {
       const { error: insertError } = await supabase.from("entries").insert({
         title: title.trim(),
         content: content.trim(),
+        is_draft: action === "draft",
         memory_date: memoryDate,
         author_id: session.user.id,
         author_name: currentProfile?.nickname || displayNameFromEmail(userEmail),
@@ -264,6 +273,7 @@ export function DiaryApp() {
   async function saveEdit(event: FormEvent<HTMLFormElement>, entryId: string) {
     event.preventDefault();
     if (!session?.user?.id) return;
+    const action = getSubmitAction(event);
     if (!editTitle.trim() || !editContent.trim() || !editMemoryDate) return;
 
     try {
@@ -275,6 +285,7 @@ export function DiaryApp() {
         .update({
           title: editTitle.trim(),
           content: editContent.trim(),
+          is_draft: action === "draft",
           memory_date: editMemoryDate,
         })
         .eq("id", entryId)
@@ -287,6 +298,27 @@ export function DiaryApp() {
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "Unable to update memory.";
+      setError(message);
+    } finally {
+      setSavingEdit(false);
+    }
+  }
+
+  async function publishDraft(entryId: string) {
+    if (!session?.user?.id) return;
+    try {
+      setSavingEdit(true);
+      setError(null);
+      const { error: publishError } = await supabase
+        .from("entries")
+        .update({ is_draft: false })
+        .eq("id", entryId)
+        .eq("author_id", session.user.id);
+      if (publishError) throw publishError;
+      await loadEntries();
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Unable to publish draft.";
       setError(message);
     } finally {
       setSavingEdit(false);
@@ -352,6 +384,7 @@ export function DiaryApp() {
   const filteredEntries = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
     return entries.filter((entry) => {
+      if (entry.is_draft) return false;
       const matchesAuthor =
         authorFilter === "all"
           ? true
@@ -359,6 +392,21 @@ export function DiaryApp() {
             ? entry.author_id === userId
             : entry.author_id === authorFilter;
       if (!matchesAuthor) return false;
+      if (!query) return true;
+      return (
+        entry.title.toLowerCase().includes(query) ||
+        entry.content.toLowerCase().includes(query) ||
+        getEntryDisplayName(entry).toLowerCase().includes(query)
+      );
+    });
+  }, [entries, searchQuery, authorFilter, userId, getEntryDisplayName]);
+
+  const filteredDrafts = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    if (authorFilter !== "all" && authorFilter !== "me") return [];
+    return entries.filter((entry) => {
+      if (!entry.is_draft) return false;
+      if (entry.author_id !== userId) return false;
       if (!query) return true;
       return (
         entry.title.toLowerCase().includes(query) ||
@@ -630,10 +678,19 @@ export function DiaryApp() {
               <div className="flex gap-2">
                 <button
                   type="submit"
+                  value="publish"
                   className="btn btn-primary"
                   disabled={savingEntry}
                 >
-                  {savingEntry ? "Saving..." : "Save memory"}
+                  {savingEntry ? "Saving..." : "Publish memory"}
+                </button>
+                <button
+                  type="submit"
+                  value="draft"
+                  className="btn btn-soft"
+                  disabled={savingEntry}
+                >
+                  {savingEntry ? "Saving..." : "Save draft"}
                 </button>
                 <button
                   type="button"
@@ -644,6 +701,49 @@ export function DiaryApp() {
                 </button>
               </div>
             </form>
+          </section>
+        ) : null}
+
+        {filteredDrafts.length > 0 ? (
+          <section className="card p-5 md:p-6 mt-5">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-medium text-zinc-800">My drafts</h2>
+              <p className="text-[10px] text-zinc-500">
+                Private to your account until published
+              </p>
+            </div>
+            <ul className="mt-4 space-y-3">
+              {filteredDrafts.map((entry) => (
+                <li key={entry.id} className="border border-zinc-200 rounded-lg p-3">
+                  <p className="text-xs uppercase tracking-wide text-amber-600">
+                    Draft saved {formatDateTime(entry.updated_at ?? entry.created_at)}
+                  </p>
+                  <h3 className="mt-1 text-base font-medium text-zinc-800">
+                    {entry.title}
+                  </h3>
+                  <p className="diary-content-text text-zinc-600 mt-2 line-clamp-3 whitespace-pre-wrap">
+                    {entry.content}
+                  </p>
+                  <div className="mt-3 flex gap-2">
+                    <button
+                      type="button"
+                      className="btn btn-soft"
+                      onClick={() => startEdit(entry)}
+                    >
+                      Edit draft
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      onClick={() => publishDraft(entry.id)}
+                      disabled={savingEdit}
+                    >
+                      {savingEdit ? "Publishing..." : "Publish now"}
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
           </section>
         ) : null}
 
@@ -772,10 +872,19 @@ export function DiaryApp() {
                       <div className="flex gap-2">
                         <button
                           type="submit"
+                          value="publish"
                           className="btn btn-primary"
                           disabled={savingEdit}
                         >
-                          {savingEdit ? "Saving..." : "Save changes"}
+                          {savingEdit ? "Saving..." : "Publish memory"}
+                        </button>
+                        <button
+                          type="submit"
+                          value="draft"
+                          className="btn btn-soft"
+                          disabled={savingEdit}
+                        >
+                          {savingEdit ? "Saving..." : "Save as draft"}
                         </button>
                         <button
                           type="button"

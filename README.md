@@ -71,6 +71,16 @@ Run this once:
 
 This creates a `comments` table so you can leave notes on each other's memories.
 
+## 3.4) Enable drafts
+
+Run this once:
+
+1. Open Supabase SQL Editor.
+2. Open `supabase/entries_add_is_draft.sql`.
+3. Run the SQL.
+
+This adds an `is_draft` column so you can save entries privately before publishing. Drafts are only visible to their author.
+
 ## 4) Set up Auth for just the two of you
 
 In Supabase dashboard:
@@ -103,3 +113,4 @@ If you are generating UI pieces in v0:
 - `supabase/entries_add_updated_at.sql`: one-time edited timestamp migration
 - `supabase/profiles.sql`: nickname/avatar profile table + RLS
 - `supabase/comments.sql`: comments table + RLS
+- `supabase/entries_add_is_draft.sql`: one-time draft support migration

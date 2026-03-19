@@ -10,7 +10,8 @@ create table if not exists public.entries (
   author_id uuid not null references auth.users (id) on delete cascade,
   author_name text not null,
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+  updated_at timestamptz not null default now(),
+  is_draft boolean not null default false
 );
 
 create index if not exists entries_memory_date_idx on public.entries (memory_date desc);
@@ -40,9 +41,13 @@ on public.entries
 for select
 to authenticated
 using (
-  auth.jwt()->>'email' in (
+  lower(auth.jwt()->>'email') in (
     'billlidc0427@gmail.com',
     'cathy326717@gmail.com'
+  )
+  and (
+    is_draft = false
+    or auth.uid() = author_id
   )
 );
 
