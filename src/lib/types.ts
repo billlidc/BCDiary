@@ -16,3 +16,30 @@ export type Profile = {
   created_at: string;
   updated_at: string;
 };
+
+export const EMOJI_OPTIONS = [
+  { key: "heart", label: "❤️" },
+  { key: "smile", label: "😊" },
+  { key: "laugh", label: "😂" },
+  { key: "cry", label: "😢" },
+  { key: "love", label: "🥰" },
+] as const;
+
+export type EmojiKey = (typeof EMOJI_OPTIONS)[number]["key"];
+
+export type Reaction = {
+  id: string;
+  entry_id: string;
+  user_id: string;
+  emoji: EmojiKey;
+  created_at: string;
+};
+
+export type Comment = {
+  id: string;
+  entry_id: string;
+  user_id: string;
+  author_name: string;
+  content: string;
+  created_at: string;
+};

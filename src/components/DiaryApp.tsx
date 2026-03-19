@@ -5,6 +5,7 @@ import type { Session } from "@supabase/supabase-js";
 import { displayNameFromEmail, isAllowedEmail } from "@/lib/auth";
 import { supabase } from "@/lib/supabaseClient";
 import type { Entry, Profile } from "@/lib/types";
+import { EntryInteractions } from "./EntryInteractions";
 import { LoginScreen } from "./LoginScreen";
 
 function toLocalDateInputValue(date: Date): string {
@@ -681,15 +682,22 @@ export function DiaryApp() {
                             : ""}
                         </p>
                       ) : null}
-                      {session?.user?.id === entry.author_id ? (
-                        <div className="mt-4">
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        {session?.user?.id === entry.author_id ? (
                           <button
                             className="btn btn-soft"
                             onClick={() => startEdit(entry)}
                           >
                             Edit memory
                           </button>
-                        </div>
+                        ) : null}
+                      </div>
+                      {userId ? (
+                        <EntryInteractions
+                          entryId={entry.id}
+                          userId={userId}
+                          displayName={welcomeName}
+                        />
                       ) : null}
                     </>
                   )}

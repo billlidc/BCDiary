@@ -33,7 +33,6 @@ NEXT_PUBLIC_ALLOWED_EMAILS=you@example.com,cathy326717@gmail.com
 2. Open `supabase/entries.sql`.
 3. Replace:
    - `you@example.com`
-   - `cathy326717@gmail.com`
 4. Run the SQL.
 
 This creates:
@@ -61,6 +60,16 @@ Run this once:
 3. Run the SQL.
 
 This creates a `profiles` table so each account can set a nickname and avatar URL.
+
+## 3.3) Enable reactions + comments
+
+Run this once:
+
+1. Open Supabase SQL Editor.
+2. Open `supabase/comments.sql`.
+3. Run the SQL.
+
+This creates a `comments` table so you can leave notes on each other's memories.
 
 ## 4) Set up Auth for just the two of you
 
@@ -93,3 +102,4 @@ If you are generating UI pieces in v0:
 - `supabase/entries.sql`: table and RLS policies
 - `supabase/entries_add_updated_at.sql`: one-time edited timestamp migration
 - `supabase/profiles.sql`: nickname/avatar profile table + RLS
+- `supabase/comments.sql`: comments table + RLS
