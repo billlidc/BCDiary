@@ -86,6 +86,8 @@ export function DiaryApp() {
   const [editContent, setEditContent] = useState("");
   const [editMemoryDate, setEditMemoryDate] = useState("");
   const [jumpDate, setJumpDate] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [collapsedEntries, setCollapsedEntries] = useState<Set<string>>(new Set());
   const addMemoryTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const editMemoryTextareaRef = useRef<HTMLTextAreaElement | null>(null);
 
@@ -97,13 +99,17 @@ export function DiaryApp() {
   const welcomeName = currentProfile?.nickname || displayNameFromEmail(userEmail);
   const welcomeAvatar = currentProfile?.avatar_url || null;
 
-  function getEntryDisplayName(entry: Entry): string {
-    return profilesById[entry.author_id]?.nickname || entry.author_name;
-  }
+  const getEntryDisplayName = useCallback(
+    (entry: Entry): string =>
+      profilesById[entry.author_id]?.nickname || entry.author_name,
+    [profilesById],
+  );
 
-  function getEntryAvatarUrl(entry: Entry): string | null {
-    return profilesById[entry.author_id]?.avatar_url || null;
-  }
+  const getEntryAvatarUrl = useCallback(
+    (entry: Entry): string | null =>
+      profilesById[entry.author_id]?.avatar_url || null,
+    [profilesById],
+  );
 
   const loadEntries = useCallback(async () => {
     setLoadingEntries(true);
@@ -320,15 +326,26 @@ export function DiaryApp() {
     }
   }, [editContent, editingEntryId]);
 
+  const filteredEntries = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return entries;
+    return entries.filter(
+      (entry) =>
+        entry.title.toLowerCase().includes(query) ||
+        entry.content.toLowerCase().includes(query) ||
+        getEntryDisplayName(entry).toLowerCase().includes(query),
+    );
+  }, [entries, searchQuery, getEntryDisplayName]);
+
   const firstEntryIdByDate = useMemo(() => {
     const map: Record<string, string> = {};
-    for (const entry of entries) {
+    for (const entry of filteredEntries) {
       if (!map[entry.memory_date]) {
         map[entry.memory_date] = entry.id;
       }
     }
     return map;
-  }, [entries]);
+  }, [filteredEntries]);
 
   const timelineDates = useMemo(
     () => Object.keys(firstEntryIdByDate).sort((a, b) => b.localeCompare(a)),
@@ -561,29 +578,55 @@ export function DiaryApp() {
         ) : null}
 
         <section className="mt-5 space-y-4">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <h2 className="text-lg font-medium text-zinc-800">Timeline</h2>
-            <button
-              className="text-sm text-zinc-500 hover:text-zinc-700"
-              onClick={loadEntries}
-            >
-              Refresh
-            </button>
+            <div className="flex items-center gap-2">
+              <div className="relative flex-1 md:flex-none">
+                <input
+                  className="input pr-8"
+                  type="search"
+                  value={searchQuery}
+                  onChange={(event) => setSearchQuery(event.target.value)}
+                  placeholder="Search memories..."
+                />
+                {searchQuery ? (
+                  <button
+                    type="button"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-700"
+                    onClick={() => setSearchQuery("")}
+                  >
+                    x
+                  </button>
+                ) : null}
+              </div>
+              <button
+                className="text-sm text-zinc-500 hover:text-zinc-700"
+                onClick={loadEntries}
+              >
+                Refresh
+              </button>
+            </div>
           </div>
+          {searchQuery.trim() && (
+            <p className="text-[10px] text-zinc-500">
+              {filteredEntries.length} {filteredEntries.length === 1 ? "memory" : "memories"} found
+              for &ldquo;{searchQuery.trim()}&rdquo;
+            </p>
+          )}
 
           {error ? <p className="text-sm text-rose-600">{error}</p> : null}
 
           {loadingEntries ? (
             <p className="text-zinc-500">Loading memories...</p>
-          ) : entries.length === 0 ? (
+          ) : filteredEntries.length === 0 ? (
             <div className="card p-6 text-sm text-zinc-600">
-              Your timeline is empty. Tap{" "}
-              <span className="font-medium">Add memory</span> to start your
-              story.
+              {searchQuery.trim()
+                ? "No memories match your search."
+                : "Your timeline is empty. Tap Add memory to start your story."}
             </div>
           ) : (
             <ul className="space-y-4">
-              {entries.map((entry) => (
+              {filteredEntries.map((entry) => (
                 <li key={entry.id} id={`entry-${entry.id}`} className="card p-5">
                   {editingEntryId === entry.id ? (
                     <form
