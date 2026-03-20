@@ -108,6 +108,9 @@ export function DiaryApp() {
   const [searchQuery, setSearchQuery] = useState("");
   const [authorFilter, setAuthorFilter] = useState<"all" | "me" | string>("all");
   const [exporting, setExporting] = useState<boolean>(false);
+  const [collapsedEntries, setCollapsedEntries] = useState<Set<string>>(
+    new Set(),
+  );
   const addMemoryTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const editMemoryTextareaRef = useRef<HTMLTextAreaElement | null>(null);
 
@@ -257,6 +260,11 @@ export function DiaryApp() {
 
   function startEdit(entry: Entry) {
     setEditingEntryId(entry.id);
+    setCollapsedEntries((prev) => {
+      const next = new Set(prev);
+      next.delete(entry.id);
+      return next;
+    });
     setEditTitle(entry.title);
     setEditContent(entry.content);
     setEditMemoryDate(entry.memory_date);
@@ -415,6 +423,27 @@ export function DiaryApp() {
       );
     });
   }, [entries, searchQuery, authorFilter, userId, getEntryDisplayName]);
+
+  const allCollapsed =
+    filteredEntries.length > 0 &&
+    filteredEntries.every((entry) => collapsedEntries.has(entry.id));
+
+  function toggleCollapse(entryId: string) {
+    setCollapsedEntries((prev) => {
+      const next = new Set(prev);
+      if (next.has(entryId)) next.delete(entryId);
+      else next.add(entryId);
+      return next;
+    });
+  }
+
+  function toggleCollapseAll() {
+    if (allCollapsed) {
+      setCollapsedEntries(new Set());
+    } else {
+      setCollapsedEntries(new Set(filteredEntries.map((entry) => entry.id)));
+    }
+  }
 
   const firstEntryIdByDate = useMemo(() => {
     const map: Record<string, string> = {};
@@ -787,6 +816,14 @@ export function DiaryApp() {
               >
                 Refresh
               </button>
+              <button
+                type="button"
+                className="text-sm text-zinc-500 hover:text-zinc-700 disabled:opacity-50"
+                onClick={toggleCollapseAll}
+                disabled={loadingEntries || filteredEntries.length === 0}
+              >
+                {allCollapsed ? "Expand all" : "Collapse all"}
+              </button>
             </div>
           </div>
           {searchQuery.trim() && (
@@ -894,55 +931,70 @@ export function DiaryApp() {
                     </form>
                   ) : (
                     <>
-                      <div className="flex items-center gap-3">
-                        <div className="avatar-box">
-                          {getEntryAvatarUrl(entry) ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img
-                              src={getEntryAvatarUrl(entry) ?? ""}
-                              alt={`${getEntryDisplayName(entry)} avatar`}
-                            />
-                          ) : (
-                            <span className="text-[10px]">
-                              {initialsFromName(getEntryDisplayName(entry))}
-                            </span>
-                          )}
+                      <button
+                        type="button"
+                        className="w-full text-left"
+                        onClick={() => toggleCollapse(entry.id)}
+                        aria-expanded={!collapsedEntries.has(entry.id)}
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="avatar-box">
+                            {getEntryAvatarUrl(entry) ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img
+                                src={getEntryAvatarUrl(entry) ?? ""}
+                                alt={`${getEntryDisplayName(entry)} avatar`}
+                              />
+                            ) : (
+                              <span className="text-[10px]">
+                                {initialsFromName(getEntryDisplayName(entry))}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs uppercase tracking-wide text-rose-500">
+                            {formatPrettyDate(entry.memory_date)} by{" "}
+                            {getEntryDisplayName(entry)}
+                          </p>
+                          <span className="ml-auto text-zinc-400 text-xs">
+                            {collapsedEntries.has(entry.id) ? "▸" : "▾"}
+                          </span>
                         </div>
-                        <p className="text-xs uppercase tracking-wide text-rose-500">
-                          {formatPrettyDate(entry.memory_date)} by{" "}
-                          {getEntryDisplayName(entry)}
-                        </p>
-                      </div>
-                      <h3 className="text-xl font-medium text-zinc-800 mt-1">
-                        {entry.title}
-                      </h3>
-                      <p className="diary-content-text text-zinc-600 mt-3 whitespace-pre-wrap">
-                        {entry.content}
-                      </p>
-                      {hasBeenEdited(entry) ? (
-                        <p className="mt-3 text-[10px] text-zinc-500">
-                          Edited{" "}
-                          {entry.updated_at
-                            ? formatDateTime(entry.updated_at)
-                            : ""}
-                        </p>
-                      ) : null}
-                      <div className="mt-4 flex flex-wrap gap-2">
-                        {session?.user?.id === entry.author_id ? (
-                          <button
-                            className="btn btn-soft"
-                            onClick={() => startEdit(entry)}
-                          >
-                            Edit memory
-                          </button>
-                        ) : null}
-                      </div>
-                      {userId ? (
-                        <EntryInteractions
-                          entryId={entry.id}
-                          userId={userId}
-                          displayName={welcomeName}
-                        />
+                        <h3 className="text-xl font-medium text-zinc-800 mt-1">
+                          {entry.title}
+                        </h3>
+                      </button>
+
+                      {!collapsedEntries.has(entry.id) ? (
+                        <>
+                          <p className="diary-content-text text-zinc-600 mt-3 whitespace-pre-wrap">
+                            {entry.content}
+                          </p>
+                          {hasBeenEdited(entry) ? (
+                            <p className="mt-3 text-[10px] text-zinc-500">
+                              Edited{" "}
+                              {entry.updated_at
+                                ? formatDateTime(entry.updated_at)
+                                : ""}
+                            </p>
+                          ) : null}
+                          <div className="mt-4 flex flex-wrap gap-2">
+                            {session?.user?.id === entry.author_id ? (
+                              <button
+                                className="btn btn-soft"
+                                onClick={() => startEdit(entry)}
+                              >
+                                Edit memory
+                              </button>
+                            ) : null}
+                          </div>
+                          {userId ? (
+                            <EntryInteractions
+                              entryId={entry.id}
+                              userId={userId}
+                              displayName={welcomeName}
+                            />
+                          ) : null}
+                        </>
                       ) : null}
                     </>
                   )}
