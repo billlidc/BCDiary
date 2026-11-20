@@ -1,6 +1,7 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { FormEvent, TouchEvent } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { displayNameFromEmail, isAllowedEmail } from "@/lib/auth";
 import { supabase } from "@/lib/supabaseClient";
@@ -84,14 +85,25 @@ function getSubmitAction(event: FormEvent<HTMLFormElement>): "publish" | "draft"
   return native.submitter?.value === "draft" ? "draft" : "publish";
 }
 
+function authorDisplayName(
+  authorId: string,
+  currentUserId: string | null,
+  currentUserName: string,
+  profilesById: Record<string, Profile>,
+  entries: Entry[],
+): string {
+  if (authorId === currentUserId) return currentUserName;
+  return (
+    profilesById[authorId]?.nickname ||
+    entries.find((entry) => entry.author_id === authorId)?.author_name ||
+    "Your partner"
+  );
+}
+
 export function DiaryApp() {
   const [session, setSession] = useState<Session | null>(null);
   const [entries, setEntries] = useState<Entry[]>([]);
   const [profilesById, setProfilesById] = useState<Record<string, Profile>>({});
-  const [showProfileEditor, setShowProfileEditor] = useState(false);
-  const [nicknameInput, setNicknameInput] = useState("");
-  const [avatarUrlInput, setAvatarUrlInput] = useState("");
-  const [savingProfile, setSavingProfile] = useState(false);
   const [showAddMemory, setShowAddMemory] = useState(false);
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
@@ -104,15 +116,17 @@ export function DiaryApp() {
   const [editTitle, setEditTitle] = useState("");
   const [editContent, setEditContent] = useState("");
   const [editMemoryDate, setEditMemoryDate] = useState("");
-  const [jumpDate, setJumpDate] = useState("");
+  const [bookOpen, setBookOpen] = useState(false);
+  const [selectedBookDate, setSelectedBookDate] = useState("");
+  const [showBlankDays, setShowBlankDays] = useState(false);
+  const [mobileBookPage, setMobileBookPage] = useState(0);
   const [searchQuery, setSearchQuery] = useState("");
   const [authorFilter, setAuthorFilter] = useState<"all" | "me" | string>("all");
   const [exporting, setExporting] = useState<boolean>(false);
-  const [collapsedEntries, setCollapsedEntries] = useState<Set<string>>(
-    new Set(),
-  );
   const addMemoryTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const editMemoryTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const addMemorySectionRef = useRef<HTMLElement | null>(null);
+  const lastEntryTouchRef = useRef<{ entryId: string; at: number } | null>(null);
 
   const userEmail = session?.user?.email ?? null;
   const userId = session?.user?.id ?? null;
@@ -128,11 +142,10 @@ export function DiaryApp() {
     [profilesById],
   );
 
-  const getEntryAvatarUrl = useCallback(
-    (entry: Entry): string | null =>
-      profilesById[entry.author_id]?.avatar_url || null,
-    [profilesById],
-  );
+  function openAddMemory(date = toLocalDateInputValue(new Date())) {
+    setMemoryDate(date);
+    setShowAddMemory(true);
+  }
 
   const loadEntries = useCallback(async () => {
     setLoadingEntries(true);
@@ -153,7 +166,7 @@ export function DiaryApp() {
     setLoadingEntries(false);
   }, []);
 
-  const loadProfiles = useCallback(async (targetUserId?: string | null) => {
+  const loadProfiles = useCallback(async () => {
     const { data, error: profilesError } = await supabase
       .from("profiles")
       .select("*");
@@ -167,13 +180,7 @@ export function DiaryApp() {
       nextMap[profile.user_id] = profile;
     }
     setProfilesById(nextMap);
-
-    const profileUserId = targetUserId ?? userId;
-    if (profileUserId && nextMap[profileUserId]) {
-      setNicknameInput(nextMap[profileUserId].nickname ?? "");
-      setAvatarUrlInput(nextMap[profileUserId].avatar_url ?? "");
-    }
-  }, [userId]);
+  }, []);
 
   async function addMemory(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -215,60 +222,28 @@ export function DiaryApp() {
     setSession(null);
     setEntries([]);
     setProfilesById({});
-    setShowProfileEditor(false);
-    setNicknameInput("");
-    setAvatarUrlInput("");
     setShowAddMemory(false);
-  }
-
-  async function saveProfile(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!session?.user?.id) return;
-
-    const nickname = nicknameInput.trim();
-    if (!nickname) {
-      setError("Nickname cannot be empty.");
-      return;
-    }
-
-    try {
-      setSavingProfile(true);
-      setError(null);
-
-      const { error: upsertError } = await supabase.from("profiles").upsert(
-        {
-          user_id: session.user.id,
-          nickname,
-          avatar_url: avatarUrlInput.trim() || null,
-        },
-        { onConflict: "user_id" },
-      );
-
-      if (upsertError) throw upsertError;
-
-      await loadProfiles();
-      await loadEntries();
-      setShowProfileEditor(false);
-    } catch (err) {
-      const message =
-        err instanceof Error ? err.message : "Unable to save profile.";
-      setError(message);
-    } finally {
-      setSavingProfile(false);
-    }
   }
 
   function startEdit(entry: Entry) {
     setEditingEntryId(entry.id);
-    setCollapsedEntries((prev) => {
-      const next = new Set(prev);
-      next.delete(entry.id);
-      return next;
-    });
     setEditTitle(entry.title);
     setEditContent(entry.content);
     setEditMemoryDate(entry.memory_date);
     setError(null);
+  }
+
+  function handleEntryTouchEnd(event: TouchEvent<HTMLDivElement>, entry: Entry) {
+    if (entry.author_id !== userId) return;
+    const now = Date.now();
+    const previousTap = lastEntryTouchRef.current;
+    if (previousTap?.entryId === entry.id && now - previousTap.at < 450) {
+      event.preventDefault();
+      lastEntryTouchRef.current = null;
+      startEdit(entry);
+      return;
+    }
+    lastEntryTouchRef.current = { entryId: entry.id, at: now };
   }
 
   function cancelEdit() {
@@ -339,9 +314,7 @@ export function DiaryApp() {
       setSession(nextSession);
 
       if (nextSession && isAllowedEmail(nextSession.user.email)) {
-        setNicknameInput(displayNameFromEmail(nextSession.user.email));
-        setAvatarUrlInput("");
-        loadProfiles(nextSession.user.id);
+        loadProfiles();
         loadEntries();
       } else {
         setLoadingEntries(false);
@@ -354,9 +327,7 @@ export function DiaryApp() {
       setSession(nextSession);
 
       if (nextSession && isAllowedEmail(nextSession.user.email)) {
-        setNicknameInput(displayNameFromEmail(nextSession.user.email));
-        setAvatarUrlInput("");
-        loadProfiles(nextSession.user.id);
+        loadProfiles();
         loadEntries();
       } else {
         setEntries([]);
@@ -372,6 +343,17 @@ export function DiaryApp() {
       autoResizeTextarea(addMemoryTextareaRef.current);
     }
   }, [content, showAddMemory]);
+
+  useEffect(() => {
+    if (!showAddMemory) return;
+    const frame = window.requestAnimationFrame(() => {
+      const section = addMemorySectionRef.current;
+      if (!section) return;
+      const top = section.getBoundingClientRect().top + window.scrollY - 16;
+      window.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [showAddMemory]);
 
   useEffect(() => {
     if (editMemoryTextareaRef.current) {
@@ -424,44 +406,76 @@ export function DiaryApp() {
     });
   }, [entries, searchQuery, authorFilter, userId, getEntryDisplayName]);
 
-  const allCollapsed =
-    filteredEntries.length > 0 &&
-    filteredEntries.every((entry) => collapsedEntries.has(entry.id));
-
-  function toggleCollapse(entryId: string) {
-    setCollapsedEntries((prev) => {
-      const next = new Set(prev);
-      if (next.has(entryId)) next.delete(entryId);
-      else next.add(entryId);
-      return next;
-    });
-  }
-
-  function toggleCollapseAll() {
-    if (allCollapsed) {
-      setCollapsedEntries(new Set());
-    } else {
-      setCollapsedEntries(new Set(filteredEntries.map((entry) => entry.id)));
-    }
-  }
-
-  const firstEntryIdByDate = useMemo(() => {
-    const map: Record<string, string> = {};
-    for (const entry of filteredEntries) {
-      if (!map[entry.memory_date]) {
-        map[entry.memory_date] = entry.id;
-      }
-    }
-    return map;
+  const bookDates = useMemo(() => {
+    const dates = Array.from(new Set(filteredEntries.map((entry) => entry.memory_date))).sort();
+    return dates;
   }, [filteredEntries]);
 
-  function jumpToDate(dateValue: string) {
-    const targetId = firstEntryIdByDate[dateValue];
-    if (!targetId) return;
-    const target = document.getElementById(`entry-${targetId}`);
-    if (!target) return;
-    target.scrollIntoView({ behavior: "smooth", block: "start" });
-    window.history.replaceState(null, "", `#entry-${targetId}`);
+  useEffect(() => {
+    if (!bookDates.length) {
+      setSelectedBookDate("");
+      return;
+    }
+    if (!selectedBookDate || (!showBlankDays && !bookDates.includes(selectedBookDate))) {
+      setSelectedBookDate(bookDates[bookDates.length - 1]);
+    }
+  }, [bookDates, selectedBookDate, showBlankDays]);
+
+  const selectedDateEntries = useMemo(
+    () => filteredEntries.filter((entry) => entry.memory_date === selectedBookDate),
+    [filteredEntries, selectedBookDate],
+  );
+
+  const selectedDateByAuthor = useMemo(() => {
+    const map = new Map<string, Entry[]>();
+    for (const entry of selectedDateEntries) {
+      const authorEntries = map.get(entry.author_id) ?? [];
+      authorEntries.push(entry);
+      map.set(entry.author_id, authorEntries);
+    }
+    return map;
+  }, [selectedDateEntries]);
+
+  const bookAuthors = useMemo(() => {
+    const ids = Array.from(new Set([
+      ...Object.keys(profilesById),
+      ...filteredEntries.map((entry) => entry.author_id),
+    ]));
+    const myIndex = ids.indexOf(userId ?? "");
+    if (myIndex > 0) ids.unshift(ids.splice(myIndex, 1)[0]);
+    while (ids.length < 2) ids.push(`partner-page-${ids.length}`);
+    return ids.slice(0, 2);
+  }, [filteredEntries, profilesById, userId]);
+
+  function shiftBookDate(direction: -1 | 1) {
+    if (!selectedBookDate) return;
+    if (showBlankDays) {
+      const next = parseDateOnlyAsLocal(selectedBookDate);
+      next.setDate(next.getDate() + direction);
+      setSelectedBookDate(toLocalDateInputValue(next));
+      return;
+    }
+    const index = bookDates.indexOf(selectedBookDate);
+    if (direction > 0 && index === bookDates.length - 1 && bookDates.length > 0) {
+      const today = toLocalDateInputValue(new Date());
+      setSelectedBookDate(today);
+      openAddMemory(today);
+      return;
+    }
+    if (index < 0) {
+      const neighbor = direction > 0
+        ? bookDates.find((date) => date > selectedBookDate)
+        : [...bookDates].reverse().find((date) => date < selectedBookDate);
+      if (neighbor) setSelectedBookDate(neighbor);
+      else if (direction > 0) {
+        const today = toLocalDateInputValue(new Date());
+        setSelectedBookDate(today);
+        openAddMemory(today);
+      }
+      return;
+    }
+    const nextIndex = index + direction;
+    if (nextIndex >= 0 && nextIndex < bookDates.length) setSelectedBookDate(bookDates[nextIndex]);
   }
 
   function buildExportBaseFilename(): string {
@@ -540,10 +554,10 @@ export function DiaryApp() {
 
   return (
     <main className="pixel-bg min-h-screen p-5 md:p-10">
-      <section className="max-w-4xl mx-auto">
-        <header className="card p-5 md:p-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+      <section className="max-w-4xl mx-auto diary-layout">
+        <header className="card diary-topbar p-3 md:p-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div className="flex items-center gap-3">
-            <div className="avatar-box avatar-box-large">
+            <div className="avatar-box diary-topbar-avatar">
               {welcomeAvatar ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
@@ -555,32 +569,17 @@ export function DiaryApp() {
               )}
             </div>
             <div>
-            <p className="text-sm text-rose-500">Shared diary</p>
-            <h1 className="text-2xl md:text-3xl font-semibold text-zinc-800">
-              Hi {welcomeName}, keep this memory cozy.
+            <h1 className="text-lg md:text-xl font-semibold text-zinc-800">
+              {welcomeName}
             </h1>
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
             <button
               className="btn btn-primary"
-              onClick={() => setShowAddMemory(true)}
+              onClick={() => openAddMemory()}
             >
               + Add memory
-            </button>
-            <button
-              className="btn btn-soft"
-              onClick={() => setShowProfileEditor((current) => !current)}
-            >
-              {showProfileEditor ? "Close profile" : "Edit profile"}
-            </button>
-            <button
-              type="button"
-              className="btn btn-soft"
-              onClick={exportAsMarkdown}
-              disabled={loadingEntries || filteredEntries.length === 0 || exporting}
-            >
-              {exporting ? "Exporting..." : "Export Markdown"}
             </button>
             <button className="btn btn-soft" onClick={signOut}>
               Sign out
@@ -588,109 +587,12 @@ export function DiaryApp() {
           </div>
         </header>
 
-        {showProfileEditor ? (
-          <section className="card p-5 md:p-6 mt-5">
-            <h2 className="text-lg font-medium text-zinc-800">
-              Profile settings
-            </h2>
-            <form className="mt-4 space-y-4" onSubmit={saveProfile}>
-              <label className="block text-sm text-zinc-700">
-                Nickname
-                <input
-                  className="input mt-1"
-                  value={nicknameInput}
-                  onChange={(event) => setNicknameInput(event.target.value)}
-                  placeholder="How your name appears in the diary"
-                  required
-                />
-              </label>
-              <label className="block text-sm text-zinc-700">
-                Avatar image URL (optional)
-                <input
-                  className="input mt-1"
-                  value={avatarUrlInput}
-                  onChange={(event) => setAvatarUrlInput(event.target.value)}
-                  placeholder="https://..."
-                />
-              </label>
-              <div className="flex gap-2">
-                <button
-                  type="submit"
-                  className="btn btn-primary"
-                  disabled={savingProfile}
-                >
-                  {savingProfile ? "Saving..." : "Save profile"}
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-soft"
-                  onClick={() => setShowProfileEditor(false)}
-                >
-                  Close
-                </button>
-              </div>
-            </form>
-          </section>
-        ) : null}
-
-        {entries.length > 0 ? (
-          <section className="card p-5 mt-5">
-            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-              <div>
-                <p className="text-sm text-rose-500">Memory calendar jump</p>
-                <p className="text-[10px] text-zinc-500">
-                  Pick a date to jump to that day in the timeline.
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                <input
-                  type="date"
-                  className="input"
-                  value={jumpDate}
-                  onChange={(event) => setJumpDate(event.target.value)}
-                />
-                <button
-                  className="btn btn-soft"
-                  onClick={() => jumpDate && jumpToDate(jumpDate)}
-                  disabled={!jumpDate || !firstEntryIdByDate[jumpDate]}
-                  type="button"
-                >
-                  Jump
-                </button>
-              </div>
-            </div>
-          </section>
-        ) : null}
-
         {showAddMemory ? (
-          <section className="card p-5 md:p-6 mt-5">
+          <section ref={addMemorySectionRef} className="diary-add-panel card p-5 md:p-6 mt-5">
             <h2 className="text-lg font-medium text-zinc-800">
               Add a new memory
             </h2>
             <form className="mt-4 space-y-4" onSubmit={addMemory}>
-              <label className="block text-sm text-zinc-700">
-                Title
-                <input
-                  className="input mt-1"
-                  value={title}
-                  onChange={(event) => setTitle(event.target.value)}
-                  placeholder="A sweet little headline"
-                  required
-                />
-              </label>
-              <label className="block text-sm text-zinc-700">
-                Memory
-                <textarea
-                  ref={addMemoryTextareaRef}
-                  className="input diary-content-text mt-1 resize-none overflow-hidden"
-                  rows={1}
-                  value={content}
-                  onChange={(event) => setContent(event.target.value)}
-                  onInput={(event) => autoResizeTextarea(event.currentTarget)}
-                  placeholder="What happened today?"
-                  required
-                />
-              </label>
               <label className="block text-sm text-zinc-700">
                 Date
                 <input
@@ -701,6 +603,29 @@ export function DiaryApp() {
                   required
                 />
               </label>
+              <label className="block text-sm text-zinc-700">
+                Title
+                <input
+                  className="input diary-content-text mt-1"
+                  value={title}
+                  onChange={(event) => setTitle(event.target.value)}
+                  placeholder="A sweet little headline"
+                  required
+                />
+              </label>
+              <label className="block text-sm text-zinc-700">
+                Memory
+                <textarea
+                  ref={addMemoryTextareaRef}
+                  className="input diary-content-text diary-add-memory-textarea mt-1 resize-none overflow-hidden"
+                  rows={4}
+                  value={content}
+                  onChange={(event) => setContent(event.target.value)}
+                  onInput={(event) => autoResizeTextarea(event.currentTarget)}
+                  placeholder="What happened today?"
+                  required
+                />
+              </label>
               <div className="flex gap-2">
                 <button
                   type="submit"
@@ -708,7 +633,7 @@ export function DiaryApp() {
                   className="btn btn-primary"
                   disabled={savingEntry}
                 >
-                  {savingEntry ? "Saving..." : "Publish memory"}
+                  {savingEntry ? "Saving..." : "Publish"}
                 </button>
                 <button
                   type="submit"
@@ -731,7 +656,7 @@ export function DiaryApp() {
         ) : null}
 
         {filteredDrafts.length > 0 ? (
-          <section className="card p-5 md:p-6 mt-5">
+          <section className="diary-drafts-panel card p-5 md:p-6 mt-5">
             <div className="flex items-center justify-between">
               <h2 className="text-lg font-medium text-zinc-800">My drafts</h2>
               <p className="text-[10px] text-zinc-500">
@@ -773,234 +698,104 @@ export function DiaryApp() {
           </section>
         ) : null}
 
-        <section className="mt-5 space-y-4">
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <h2 className="text-lg font-medium text-zinc-800">Timeline</h2>
-            <div className="flex items-center gap-2">
-              <select
-                className="input"
-                value={authorFilter}
-                onChange={(event) => setAuthorFilter(event.target.value)}
-              >
-                <option value="all">All authors</option>
-                <option value="me">Me</option>
-                {authorOptions
-                  .filter((option) => option.id !== userId)
-                  .map((option) => (
-                    <option key={option.id} value={option.id}>
-                      {option.name}
-                    </option>
-                  ))}
+        <section className="diary-book-section mt-4 space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-sm text-rose-500">Our shared story</p>
+              <h2 className="text-xl font-semibold text-zinc-800">The diary</h2>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <select className="input" value={authorFilter} onChange={(event) => setAuthorFilter(event.target.value)} aria-label="Filter by author">
+                <option value="all">Both authors</option>
+                <option value="me">My entries</option>
+                {authorOptions.filter((option) => option.id !== userId).map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}
               </select>
-              <div className="relative flex-1 md:flex-none">
-                <input
-                  className="input pr-8"
-                  type="search"
-                  value={searchQuery}
-                  onChange={(event) => setSearchQuery(event.target.value)}
-                  placeholder="Search memories..."
-                />
-                {searchQuery ? (
-                  <button
-                    type="button"
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-700"
-                    onClick={() => setSearchQuery("")}
-                  >
-                    x
-                  </button>
-                ) : null}
-              </div>
-              <button
-                className="text-sm text-zinc-500 hover:text-zinc-700"
-                onClick={loadEntries}
-              >
-                Refresh
-              </button>
-              <button
-                type="button"
-                className="text-sm text-zinc-500 hover:text-zinc-700 disabled:opacity-50"
-                onClick={toggleCollapseAll}
-                disabled={loadingEntries || filteredEntries.length === 0}
-              >
-                {allCollapsed ? "Expand all" : "Collapse all"}
-              </button>
+              <input className="input" type="search" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Search memories" aria-label="Search memories" />
             </div>
           </div>
-          {searchQuery.trim() && (
-            <p className="text-[10px] text-zinc-500">
-              {filteredEntries.length} {filteredEntries.length === 1 ? "memory" : "memories"} found
-              for &ldquo;{searchQuery.trim()}&rdquo;
-            </p>
-          )}
-          {authorFilter !== "all" && (
-            <p className="text-[10px] text-zinc-500">
-              Filtering by{" "}
-              {authorFilter === "me"
-                ? "you"
-                : authorOptions.find((option) => option.id === authorFilter)?.name ?? "selected author"}
-              .
-            </p>
-          )}
-
           {error ? <p className="text-sm text-rose-600">{error}</p> : null}
-
-          {loadingEntries ? (
-            <p className="text-zinc-500">Loading memories...</p>
-          ) : filteredEntries.length === 0 ? (
-            <div className="card p-6 text-sm text-zinc-600">
-              {searchQuery.trim()
-                ? "No memories match your search."
-                : authorFilter !== "all"
-                  ? "No memories found for this author filter."
-                : "Your timeline is empty. Tap Add memory to start your story."}
-            </div>
+          {loadingEntries ? <p className="text-zinc-500">Loading memories...</p> : !bookOpen ? (
+            <button type="button" className="diary-cover" onClick={() => setBookOpen(true)} aria-label="Open the diary">
+              <span className="diary-cover-kicker">A little book of</span>
+              <span className="diary-cover-title">Our Days<br />Together</span>
+              <span className="diary-cover-mark">✿</span>
+              <span className="diary-cover-note">A shared book for two</span>
+              <span className="diary-cover-open">Open the diary <span aria-hidden="true">→</span></span>
+            </button>
           ) : (
-            <ul className="space-y-4">
-              {filteredEntries.map((entry) => (
-                <li key={entry.id} id={`entry-${entry.id}`} className="card p-5">
-                  {editingEntryId === entry.id ? (
-                    <form
-                      className="space-y-4"
-                      onSubmit={(event) => saveEdit(event, entry.id)}
-                    >
-                      <p className="text-xs uppercase tracking-wide text-rose-500">
-                        Editing memory by {getEntryDisplayName(entry)}
-                      </p>
-                      <label className="block text-sm text-zinc-700">
-                        Title
-                        <input
-                          className="input mt-1"
-                          value={editTitle}
-                          onChange={(event) => setEditTitle(event.target.value)}
-                          required
-                        />
-                      </label>
-                      <label className="block text-sm text-zinc-700">
-                        Memory
-                        <textarea
-                          ref={editMemoryTextareaRef}
-                          className="input diary-content-text mt-1 resize-none overflow-hidden"
-                          rows={1}
-                          value={editContent}
-                          onChange={(event) =>
-                            setEditContent(event.target.value)
-                          }
-                          onInput={(event) =>
-                            autoResizeTextarea(event.currentTarget)
-                          }
-                          required
-                        />
-                      </label>
-                      <label className="block text-sm text-zinc-700">
-                        Date
-                        <input
-                          type="date"
-                          className="input mt-1"
-                          value={editMemoryDate}
-                          onChange={(event) =>
-                            setEditMemoryDate(event.target.value)
-                          }
-                          required
-                        />
-                      </label>
-                      <div className="flex gap-2">
-                        <button
-                          type="submit"
-                          value="publish"
-                          className="btn btn-primary"
-                          disabled={savingEdit}
-                        >
-                          {savingEdit ? "Saving..." : "Publish memory"}
-                        </button>
-                        <button
-                          type="submit"
-                          value="draft"
-                          className="btn btn-soft"
-                          disabled={savingEdit}
-                        >
-                          {savingEdit ? "Saving..." : "Save as draft"}
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn-soft"
-                          onClick={cancelEdit}
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    </form>
-                  ) : (
-                    <>
-                      <button
-                        type="button"
-                        className="w-full text-left"
-                        onClick={() => toggleCollapse(entry.id)}
-                        aria-expanded={!collapsedEntries.has(entry.id)}
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className="avatar-box">
-                            {getEntryAvatarUrl(entry) ? (
-                              // eslint-disable-next-line @next/next/no-img-element
-                              <img
-                                src={getEntryAvatarUrl(entry) ?? ""}
-                                alt={`${getEntryDisplayName(entry)} avatar`}
-                              />
-                            ) : (
-                              <span className="text-[10px]">
-                                {initialsFromName(getEntryDisplayName(entry))}
-                              </span>
-                            )}
-                          </div>
-                          <p className="text-xs uppercase tracking-wide text-rose-500">
-                            {formatPrettyDate(entry.memory_date)} by{" "}
-                            {getEntryDisplayName(entry)}
-                          </p>
-                          <span className="ml-auto text-zinc-400 text-xs">
-                            {collapsedEntries.has(entry.id) ? "▸" : "▾"}
-                          </span>
+            <div className="diary-book">
+              <div className="diary-toolbar">
+                <button className="btn btn-soft" type="button" onClick={() => setBookOpen(false)}>‹ Cover</button>
+                <label className="diary-date-label" aria-label="Choose diary date">
+                  <input className="input" type="date" value={selectedBookDate} aria-label="Choose diary date" onChange={(event) => setSelectedBookDate(event.target.value)} />
+                </label>
+                <label className="diary-blank-toggle"><input type="checkbox" checked={showBlankDays} onChange={(event) => setShowBlankDays(event.target.checked)} /> Include blank days</label>
+              </div>
+              <div className="diary-spread-heading">
+                <button type="button" className="btn btn-soft" onClick={() => shiftBookDate(-1)} disabled={!selectedBookDate || (!showBlankDays && bookDates.indexOf(selectedBookDate) <= 0)}>← Previous</button>
+                <div><p className="diary-date-kicker">A day in our story</p><h3>{selectedBookDate ? formatPrettyDate(selectedBookDate) : "Choose a date"}</h3></div>
+                <button type="button" className="btn btn-soft" onClick={() => shiftBookDate(1)} disabled={!selectedBookDate || (!showBlankDays && bookDates.length === 0)}>{!showBlankDays && bookDates.length > 0 && bookDates.indexOf(selectedBookDate) === bookDates.length - 1 ? "New entry →" : "Next →"}</button>
+              </div>
+              <div className="diary-mobile-tabs" role="tablist" aria-label="Diary pages">
+                {bookAuthors.map((authorId, index) => {
+                  const authorName = authorDisplayName(authorId, userId, welcomeName, profilesById, filteredEntries);
+                  return <button key={authorId} type="button" role="tab" aria-selected={mobileBookPage === index} className={mobileBookPage === index ? "diary-mobile-tab active" : "diary-mobile-tab"} onClick={() => setMobileBookPage(index)}>{authorName}</button>;
+                })}
+              </div>
+              {searchQuery.trim() ? <p className="px-5 pb-3 text-xs text-zinc-500">{filteredEntries.length} matching {filteredEntries.length === 1 ? "memory" : "memories"} across {bookDates.length} {bookDates.length === 1 ? "date" : "dates"}</p> : null}
+              <div className="diary-spread">
+                {bookAuthors.map((authorId, pageIndex) => {
+                  const authorName = authorDisplayName(authorId, userId, welcomeName, profilesById, filteredEntries);
+                  const authorAvatar = profilesById[authorId]?.avatar_url;
+                  const authorEntries = selectedDateByAuthor.get(authorId) ?? [];
+                  return <article className={`diary-page${mobileBookPage === pageIndex ? " is-mobile-active" : ""}`} key={authorId}>
+                    <div className="diary-page-author">
+                      <div className="diary-author-identity">
+                        <div className="diary-author-avatar">
+                          {authorAvatar ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={authorAvatar} alt={`${authorName} profile`} />
+                          ) : <span>{initialsFromName(authorName)}</span>}
                         </div>
-                        <h3 className="text-xl font-medium text-zinc-800 mt-1">
-                          {entry.title}
-                        </h3>
-                      </button>
-
-                      {!collapsedEntries.has(entry.id) ? (
-                        <>
-                          <p className="diary-content-text text-zinc-600 mt-3 whitespace-pre-wrap">
-                            {entry.content}
-                          </p>
-                          {hasBeenEdited(entry) ? (
-                            <p className="mt-3 text-[10px] text-zinc-500">
-                              Edited{" "}
-                              {entry.updated_at
-                                ? formatDateTime(entry.updated_at)
-                                : ""}
-                            </p>
-                          ) : null}
-                          <div className="mt-4 flex flex-wrap gap-2">
-                            {session?.user?.id === entry.author_id ? (
-                              <button
-                                className="btn btn-soft"
-                                onClick={() => startEdit(entry)}
-                              >
-                                Edit memory
-                              </button>
-                            ) : null}
-                          </div>
-                          {userId ? (
-                            <EntryInteractions
-                              entryId={entry.id}
-                              userId={userId}
-                              displayName={welcomeName}
-                            />
-                          ) : null}
-                        </>
-                      ) : null}
-                    </>
-                  )}
-                </li>
-              ))}
-            </ul>
+                        <span className="diary-author-name">{authorName}</span>
+                      </div>
+                    </div>
+                    {authorEntries.length ? authorEntries.map((entry) => <div className="diary-memory" key={entry.id}>
+                      {editingEntryId === entry.id ? <form className="space-y-3" onSubmit={(event) => saveEdit(event, entry.id)}>
+                        <label className="block text-sm">Title<input className="input mt-1" value={editTitle} onChange={(event) => setEditTitle(event.target.value)} required /></label>
+                        <label className="block text-sm">Memory<textarea ref={editMemoryTextareaRef} className="input diary-content-text mt-1 resize-y" rows={4} value={editContent} onChange={(event) => setEditContent(event.target.value)} required /></label>
+                        <label className="block text-sm">Date<input className="input mt-1" type="date" value={editMemoryDate} onChange={(event) => setEditMemoryDate(event.target.value)} required /></label>
+                        <div className="flex flex-wrap gap-2"><button className="btn btn-primary" type="submit" value="publish" disabled={savingEdit}>Save changes</button><button className="btn btn-soft" type="submit" value="draft" disabled={savingEdit}>Save draft</button><button className="btn btn-soft" type="button" onClick={cancelEdit}>Cancel</button></div>
+                      </form> : <>
+                        <div
+                          className={entry.author_id === userId ? "diary-memory-copy is-editable" : "diary-memory-copy"}
+                          onDoubleClick={entry.author_id === userId ? () => startEdit(entry) : undefined}
+                          onTouchEnd={(event) => handleEntryTouchEnd(event, entry)}
+                        >
+                          <h4>{entry.title}</h4>
+                          <p className="diary-content-text whitespace-pre-wrap">{entry.content}</p>
+                        </div>
+                        {hasBeenEdited(entry) && entry.updated_at ? <p className="mt-2 text-[10px] text-zinc-500">Edited {formatDateTime(entry.updated_at)}</p> : null}
+                        {userId ? <EntryInteractions entryId={entry.id} userId={userId} displayName={welcomeName} /> : null}
+                      </>}
+                    </div>) : <div className="diary-empty"><span className="diary-empty-flower">✿</span><p>{selectedBookDate ? "No memory on this page yet." : "Choose a date to open this page."}</p>{selectedBookDate ? <button className="btn btn-primary" type="button" onClick={() => openAddMemory(selectedBookDate)}>Write a memory</button> : null}</div>}
+                    {authorEntries.length > 0 && authorEntries.every((entry) => entry.author_id === userId) ? <button className="btn btn-primary mt-3" type="button" onClick={() => openAddMemory(selectedBookDate)}>+ Add another memory</button> : null}
+                  </article>;
+                })}
+              </div>
+              <div className="diary-book-footer">
+                <span>{bookDates.length} {bookDates.length === 1 ? "written day" : "written days"}</span>
+                <span className="diary-book-hint">Use the date picker to find any day</span>
+                <button
+                  type="button"
+                  className="btn btn-soft"
+                  onClick={exportAsMarkdown}
+                  disabled={loadingEntries || filteredEntries.length === 0 || exporting}
+                >
+                  {exporting ? "Exporting..." : "Export Markdown"}
+                </button>
+              </div>
+            </div>
           )}
         </section>
       </section>
