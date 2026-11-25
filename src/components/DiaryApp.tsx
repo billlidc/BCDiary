@@ -21,11 +21,12 @@ function parseDateOnlyAsLocal(value: string): Date {
   return new Date(year, (month || 1) - 1, day || 1, 12, 0, 0, 0);
 }
 
-function formatPrettyDate(value: string): string {
+function formatPrettyDate(value: string, includeWeekday = false): string {
   const date = /^\d{4}-\d{2}-\d{2}$/.test(value)
     ? parseDateOnlyAsLocal(value)
     : new Date(value);
   return date.toLocaleDateString(undefined, {
+    weekday: includeWeekday ? "long" : undefined,
     month: "short",
     day: "numeric",
     year: "numeric",
@@ -733,7 +734,7 @@ export function DiaryApp() {
               </div>
               <div className="diary-spread-heading">
                 <button type="button" className="btn btn-soft" onClick={() => shiftBookDate(-1)} disabled={!selectedBookDate || (!showBlankDays && bookDates.indexOf(selectedBookDate) <= 0)}>← Previous</button>
-                <div><p className="diary-date-kicker">A day in our story</p><h3>{selectedBookDate ? formatPrettyDate(selectedBookDate) : "Choose a date"}</h3></div>
+                <div><p className="diary-date-kicker">A day in our story</p><h3>{selectedBookDate ? formatPrettyDate(selectedBookDate, true) : "Choose a date"}</h3></div>
                 <button type="button" className="btn btn-soft" onClick={() => shiftBookDate(1)} disabled={!selectedBookDate || (!showBlankDays && bookDates.length === 0)}>{!showBlankDays && bookDates.length > 0 && bookDates.indexOf(selectedBookDate) === bookDates.length - 1 ? "New entry →" : "Next →"}</button>
               </div>
               <div className="diary-mobile-tabs" role="tablist" aria-label="Diary pages">
@@ -762,7 +763,7 @@ export function DiaryApp() {
                     </div>
                     {authorEntries.length ? authorEntries.map((entry) => <div className="diary-memory" key={entry.id}>
                       {editingEntryId === entry.id ? <form className="space-y-3" onSubmit={(event) => saveEdit(event, entry.id)}>
-                        <label className="block text-sm">Title<input className="input mt-1" value={editTitle} onChange={(event) => setEditTitle(event.target.value)} required /></label>
+                        <label className="block text-sm">Title<input className="input diary-content-text mt-1" value={editTitle} onChange={(event) => setEditTitle(event.target.value)} required /></label>
                         <label className="block text-sm">Memory<textarea ref={editMemoryTextareaRef} className="input diary-content-text mt-1 resize-y" rows={4} value={editContent} onChange={(event) => setEditContent(event.target.value)} required /></label>
                         <label className="block text-sm">Date<input className="input mt-1" type="date" value={editMemoryDate} onChange={(event) => setEditMemoryDate(event.target.value)} required /></label>
                         <div className="flex flex-wrap gap-2"><button className="btn btn-primary" type="submit" value="publish" disabled={savingEdit}>Save changes</button><button className="btn btn-soft" type="submit" value="draft" disabled={savingEdit}>Save draft</button><button className="btn btn-soft" type="button" onClick={cancelEdit}>Cancel</button></div>
